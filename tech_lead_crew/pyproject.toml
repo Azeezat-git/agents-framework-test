@@ -1,0 +1,36 @@
+[project]
+name = "tech_lead_crew"
+version = "0.1.0"
+description = "tech-lead-crew using crewAI"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "kagent-crewai",
+    "crewai[tools]>=1.6.0,<2.0.0",
+    "crewai-tools[mcp]>=0.10.0,<2.0.0",  # CrewAI MCP adapters
+    "uvicorn",        # ASGI server for FastAPI
+    "langchain-openai",  # For ChatOpenAI to configure LLM with custom baseUrl
+    "mcp",            # Keep mcp in case it’s needed; primary will be crewai-tools
+]
+
+[project.scripts]
+tech_lead_crew = "tech_lead_crew.main:run"
+run_crew = "tech_lead_crew.main:run"
+train = "tech_lead_crew.main:train"
+replay = "tech_lead_crew.main:replay"
+test = "tech_lead_crew.main:test"
+run_with_trigger = "tech_lead_crew.main:run_with_trigger"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.crewai]
+type = "crew"
+
+# kagent-crewai is available on PyPI and requires Python >=3.13
+# Installation: pip install kagent-crewai
+# Note: If using Python 3.13, you may need to install pre-release versions of:
+#   - opentelemetry-instrumentation-fastapi>=0.52.0
+#   - opentelemetry-instrumentation-httpx>=0.52.0
+# Use: pip install --pre "opentelemetry-instrumentation-fastapi>=0.52.0" "opentelemetry-instrumentation-httpx>=0.52.0"

@@ -1,0 +1,32 @@
+analyze_and_extract:
+  description: >
+    🔍 Analyzing Jira issue and extracting requirements in one pass. Use the input "jira_issue_key" (e.g., "TECBAC-209").
+
+    Call the jira_get_issue tool exactly once. If it fails, report the failure and stop; do NOT retry.
+
+    From the Jira response, extract:
+    - Issue key and title
+    - Description and acceptance criteria
+    - Repository location (if specified in task description or links)
+    - Project information and project key
+    - Constraints, dependencies, or specifications
+    - Bitbucket workspace/project key (extract from URLs or use Jira project key as fallback)
+
+    If a repository is mentioned in the Jira issue:
+    - Extract the workspace value from the Bitbucket URL or use Jira project key as fallback
+    - Use Bitbucket MCP tools (listRepositories, listRepositoryFiles) to analyze repository structure
+    - Identify project type (frontend, backend, infrastructure, etc.)
+    - Focus on structure and type, NOT code patterns or implementation details
+
+    Then produce:
+    - Deliverables (WHAT to create/modify)
+    - Required functionality (behaviors/capabilities)
+    - Input/Output specifications
+    - Constraints and validations
+    - Integration requirements (external systems/APIs/components)
+    - Repository Context: Project type and basic structure (if repository was analyzed)
+
+    Do NOT include implementation details or code-level guidance. Focus on WHAT, not HOW.
+  expected_output: >
+    A combined issue summary and requirements extraction with the fields listed above, with no additional tool calls beyond the single jira_get_issue invocation.
+  agent: tech_lead_crew
