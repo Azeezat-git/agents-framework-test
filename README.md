@@ -11,6 +11,10 @@ for-tech-crew/
 │   ├── tests/
 │   ├── pyproject.toml
 │   └── README.md
+├── tech_lead_langgraph/     # LangGraph-based Tech Lead agent
+│   ├── src/
+│   ├── pyproject.toml
+│   └── test_local.py
 └── README.md                # This file
 ```
 
@@ -198,13 +202,154 @@ After execution, you'll get:
 
 **Verification**: After running, check your company's observability platform for traces from service `tech-lead-crew`.
 
-## Future Agents
+## Tech Lead LangGraph
 
-Additional agent implementations can be added to this repository:
-- `tech-lead-langgraph/` - LangGraph-based implementation
-- Other agent frameworks as needed
+A LangGraph-based agent that analyzes Jira issues and Bitbucket repositories to generate implementation plans. Uses a deterministic state machine approach for faster execution.
 
-Each agent directory should have its own README with specific setup instructions.
+### Setup
+
+1. **Navigate to the directory:**
+   ```bash
+   cd tech_lead_langgraph
+   ```
+
+2. **Create and activate virtual environment:**
+   ```bash
+   python3.13 -m venv venv_langgraph
+   source venv_langgraph/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -e .
+   ```
+
+### Port-Forwarding Setup
+
+Same port-forwarding setup as CrewAI (see [Port-Forwarding Setup](#port-forwarding-setup) above):
+
+- Jira MCP: `localhost:3001`
+- Bitbucket MCP: `localhost:3000`
+- Agent Gateway: `localhost:8080`
+
+### Running Locally
+
+1. **Set environment variables:**
+   ```bash
+   export PYTHON_DOTENV_IGNORE=1
+   export FASTMCP_DOTENV=0
+   export JIRA_MCP_URL=http://localhost:3001/mcp
+   export BITBUCKET_MCP_URL=http://localhost:3000/mcp
+   export GATEWAY_BASE_URL=http://localhost:8080/llm/bedrock/default
+   export GATEWAY_API_KEY="irsa-placeholder-key"
+   
+   # Optional: Enable LangSmith tracing
+   export LANGCHAIN_TRACING_V2=true
+   export LANGCHAIN_PROJECT=tech-lead-langgraph
+   export LANGCHAIN_API_KEY=your-api-key  # Optional, for cloud tracing
+   
+   # Optional: Send telemetry to your company's OTEL endpoint
+   export OTEL_EXPORTER_OTLP_ENDPOINT=https://your.company.collector:4318
+   export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer YOUR_TOKEN"  # If auth required
+   export OTEL_SERVICE_NAME=tech-lead-langgraph
+   export OTEL_TRACES_EXPORTER=otlp
+   export OTEL_LOGS_EXPORTER=otlp
+   export OTEL_METRICS_EXPORTER=otlp
+   ```
+
+2. **Run the test script:**
+   ```bash
+   python test_local.py
+   ```
+
+   The script will:
+   - Fetch the Jira issue using MCP tools
+   - Extract repository information
+   - List repositories and files
+   - Generate the implementation specification
+
+### Environment Variables Explained
+
+- **`JIRA_MCP_URL`**: URL for the Jira MCP server (default: `http://localhost:3001/mcp`)
+- **`BITBUCKET_MCP_URL`**: URL for the Bitbucket MCP server (default: `http://localhost:3000/mcp`)
+- **`GATEWAY_BASE_URL`**: Agent Gateway endpoint for LLM access (default: `http://localhost:8080/llm/bedrock/default`)
+- **`GATEWAY_API_KEY`**: API key for Agent Gateway (use `"irsa-placeholder-key"` for IRSA-authenticated gateways)
+- **`LANGCHAIN_TRACING_V2`**: Enable LangSmith tracing (default: `false`)
+  - When enabled, automatically activates LangChain/LangGraph instrumentation
+  - Creates LangSmith trace URLs for viewing
+  - Also sends to your OTEL endpoint if `OTEL_EXPORTER_OTLP_ENDPOINT` is set
+- **`LANGCHAIN_PROJECT`**: Project name for LangSmith (default: `tech-lead-langgraph`)
+- **`LANGCHAIN_API_KEY`**: LangSmith API key (optional, for cloud tracing)
+- **`OTEL_EXPORTER_OTLP_ENDPOINT`**: Your company's OTEL collector endpoint (e.g., `https://collector.company.com:4318`)
+- **`OTEL_EXPORTER_OTLP_HEADERS`**: Authentication headers if required (e.g., `"Authorization=Bearer TOKEN"`)
+- **`OTEL_SERVICE_NAME`**: Service name for filtering in your observability platform
+- **`OTEL_TRACES_EXPORTER`**: Set to `otlp` to export traces
+- **`OTEL_LOGS_EXPORTER`**: Set to `otlp` to export logs
+- **`OTEL_METRICS_EXPORTER`**: Set to `otlp` to export metrics
+
+### Output
+
+After execution, you'll get:
+
+1. **Console Output**: The implementation plan and issue summary
+2. **LangSmith Trace URL** (if `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set): URL for viewing in LangSmith dashboard
+3. **OTEL Telemetry** (if `OTEL_EXPORTER_OTLP_ENDPOINT` is set): Traces, logs, and metrics sent to your company's OTEL endpoint
+4. **State Summary**: Information about what was fetched (Jira issue, repositories, files)
+
+### Key Differences from CrewAI
+
+- **Faster Execution**: LangGraph uses a deterministic state machine, resulting in fewer LLM calls (~1-2 vs 5+)
+- **Explicit Control Flow**: Graph-based execution with explicit nodes and edges
+- **State-Driven**: State determines the next step, not agent reasoning
+- **Same Functionality**: Both agents produce the same output format
+
+### Troubleshooting
+
+1. **Connection refused errors**: Ensure port-forwarding is active and ports are correct
+2. **401 Unauthorized**: Check that `GATEWAY_API_KEY` is set (even if using IRSA)
+3. **MCP connection failures**: Verify MCP server URLs and that services are running in the cluster
+4. **No trace URL**: Ensure `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set for cloud tracing
+
+### Telemetry and Observability
+
+**LangGraph Telemetry:**
+- **Focus**: Traces, Logs, and Metrics
+- **Automatic**: When `LANGCHAIN_TRACING_V2=true`, LangGraph automatically uses the installed `opentelemetry-instrumentation-langchain` package
+- **No Code Changes**: Just set environment variables - no imports or SDK calls needed
+
+**Two Possible Destinations:**
+
+1. **LangSmith** (if API key provided)
+   - Cloud-based tracing and visualization
+   - URL appears automatically when `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set
+   - View at: https://smith.langchain.com
+
+2. **Your Company's OTEL Endpoint** (Recommended for Production)
+   - Full control over telemetry destination
+   - Traces, logs, and metrics sent to your infrastructure
+   - Set `OTEL_EXPORTER_OTLP_ENDPOINT` and related variables
+   - View in your company's observability platform (Jaeger, Grafana, Datadog, etc.)
+
+**Note**: You can have both enabled simultaneously. LangSmith provides cloud-based debugging, while your OTEL configuration builds the production observability pipeline.
+
+**Verification**: After running, check your company's observability platform for traces from service `tech-lead-langgraph`.
+
+## Framework Comparison
+
+| Feature | CrewAI | LangGraph |
+|---------|--------|-----------|
+| **Execution Model** | Agent reasoning loop | Deterministic state machine |
+| **LLM Calls** | 5+ (agent decides flow) | 1-2 (explicit flow) |
+| **Speed** | Slower (~180-230s) | Faster (~30-60s) |
+| **Flexibility** | High (agents adapt) | Medium (explicit flow) |
+| **Use Case** | Complex multi-agent tasks | Deterministic workflows |
+| **API Style** | Agent/Task-based | Graph API (StateGraph) |
+
+Both frameworks use the same:
+- Bedrock model (via agent gateway)
+- MCP servers (Jira, Bitbucket)
+- OTEL endpoint (for observability)
+- Output format (implementation specifications)
 
 
 

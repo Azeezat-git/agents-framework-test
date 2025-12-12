@@ -130,23 +130,88 @@ if __name__ == "__main__":
         print("=" * 60)
         print(f"\nResult:\n{result}")
         
+        # Display trace URL if available (CrewAI Cloud ephemeral trace)
+        # CrewAI automatically prints trace URL, but let's also capture it
+        print("\n" + "=" * 60)
+        print("📊 Execution Summary:")
+        print("=" * 60)
+        
         # Access and display usage metrics
         if hasattr(crew, 'usage_metrics') and crew.usage_metrics:
-            print("\n" + "=" * 60)
-            print("📊 Usage Metrics:")
-            print("=" * 60)
+            print("\n📊 Token Usage Metrics (from CrewAI):")
             # UsageMetrics is a Pydantic model, convert to dict first
             if hasattr(crew.usage_metrics, 'dict'):
-                print(json.dumps(crew.usage_metrics.dict(), indent=2))
+                metrics_dict = crew.usage_metrics.dict()
             else:
-                print(json.dumps(crew.usage_metrics, indent=2, default=str))
+                metrics_dict = crew.usage_metrics
+            
+            # Display key metrics in a readable format
+            # Note: CrewAI uses 'prompt_tokens' and 'completion_tokens'
+            # Gateway logs use 'input_tokens' and 'output_tokens' (they're the same)
+            # Check all possible field names
+            prompt_tokens = (
+                metrics_dict.get('prompt_tokens') or 
+                metrics_dict.get('input_tokens') or 
+                metrics_dict.get('total_prompt_tokens') or 
+                0
+            )
+            completion_tokens = (
+                metrics_dict.get('completion_tokens') or 
+                metrics_dict.get('output_tokens') or 
+                metrics_dict.get('total_completion_tokens') or 
+                0
+            )
+            total_tokens = (
+                metrics_dict.get('total_tokens') or 
+                metrics_dict.get('total_token_count') or 
+                0
+            )
+            
+            # Debug: Show all available keys
+            print(f"\n  Available metric fields: {list(metrics_dict.keys())}")
+            
+            print(f"  Total Tokens: {total_tokens:,}")
+            print(f"  Prompt/Input Tokens: {prompt_tokens:,}")
+            print(f"  Completion/Output Tokens: {completion_tokens:,}")
+            print(f"  Successful Requests: {metrics_dict.get('successful_requests', 'N/A')}")
+            if metrics_dict.get('cached_prompt_tokens'):
+                print(f"  Cached Tokens: {metrics_dict.get('cached_prompt_tokens', 0):,}")
+            
+            # Verify calculation
+            calculated_total = prompt_tokens + completion_tokens
+            if total_tokens and calculated_total != total_tokens:
+                print(f"\n  ⚠️  WARNING: Total mismatch!")
+                print(f"     Calculated (prompt + completion): {calculated_total:,}")
+                print(f"     Reported total: {total_tokens:,}")
+                print(f"     Difference: {abs(calculated_total - total_tokens):,}")
+            else:
+                print(f"\n  ✅ Total calculation verified: {prompt_tokens:,} + {completion_tokens:,} = {calculated_total:,}")
+            
+            # Also show full JSON for detailed view
+            print("\n  Full Metrics (JSON):")
+            print(json.dumps(metrics_dict, indent=2))
+            
+            # Instructions for verifying against gateway logs
+            print("\n" + "=" * 60)
+            print("🔍 Verification Instructions:")
+            print("=" * 60)
+            print("To verify these metrics against agent gateway logs, run:")
+            print("  kubectl -n core-gloogateway logs <pod-name> --tail=100 | grep 'gen_ai.usage'")
+            print("\nThen manually sum:")
+            print("  - All 'gen_ai.usage.input_tokens' values (should match Prompt Tokens above)")
+            print("  - All 'gen_ai.usage.output_tokens' values (should match Completion Tokens above)")
+            print("  - Total = input_tokens + output_tokens (should match Total Tokens above)")
+            print("\nNote: Gateway logs show per-request metrics; CrewAI aggregates all requests.")
+        
+        # Note: CrewAI automatically prints trace URL in the verbose output
+        # It appears as: "🔗 View here: https://app.crewai.com/..."
+        print("\n💡 Note: CrewAI trace URL is shown above in the verbose output")
+        print("   Look for 'Trace Batch Finalization' section with the trace URL")
         
         # Check for log file
         log_file = "logs.txt"
         if os.path.exists(log_file):
-            print("\n" + "=" * 60)
-            print(f"📝 Log file saved to: {os.path.abspath(log_file)}")
-            print("=" * 60)
+            print(f"\n📝 Log file saved to: {os.path.abspath(log_file)}")
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback

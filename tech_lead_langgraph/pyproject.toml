@@ -1,0 +1,21 @@
+[project]
+name = "tech_lead_langgraph"
+version = "0.1.0"
+description = "LangGraph-based Tech Lead agent (skeleton)"
+readme = ""
+requires-python = ">=3.13"
+dependencies = [
+    "langgraph>=0.1.0",
+    "langchain-openai>=0.2.0",
+    "fastmcp>=0.5.0",
+    "kagent-langgraph>=0.7.6",  # KAgent integration for LangGraph
+    "uvicorn",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.kagent]
+type = "langgraph"
+
