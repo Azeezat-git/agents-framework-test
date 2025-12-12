@@ -1,0 +1,82 @@
+apiVersion: kagent.dev/v1alpha2
+kind: BYOAgent
+metadata:
+  name: tech-lead-crew
+  namespace: your-namespace  # Replace with your namespace
+spec:
+  image: your-registry/tech-lead-crew:latest  # Your Docker image
+  imagePullPolicy: Always
+  
+  # Environment variables - ADD YOUR OTEL ENDPOINT HERE
+  env:
+    # ============================================
+    # OTEL Configuration (Add when ready)
+    # ============================================
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: "https://your.company.otel.collector:4318"  # ⬅️ PUT YOUR ENDPOINT HERE
+    - name: OTEL_EXPORTER_OTLP_HEADERS
+      value: "Authorization=Bearer YOUR_TOKEN"  # If auth required
+    - name: OTEL_SERVICE_NAME
+      value: "tech-lead-crew"
+    
+    # Enable all three telemetry signals
+    - name: OTEL_TRACES_EXPORTER
+      value: "otlp"
+    - name: OTEL_LOGS_EXPORTER
+      value: "otlp"
+    - name: OTEL_METRICS_EXPORTER
+      value: "otlp"
+    
+    # CrewAI tracing
+    - name: CREWAI_TRACING_ENABLED
+      value: "true"
+    - name: CREWAI_LOG_LEVEL
+      value: "INFO"
+    
+    # Python logging auto-instrumentation
+    - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
+      value: "true"
+    
+    # ============================================
+    # MCP Server URLs (Cluster-internal)
+    # ============================================
+    - name: JIRA_MCP_URL
+      value: "http://jira-mcp.core-kagent.svc.cluster.local:3001/mcp"
+    - name: BITBUCKET_MCP_URL
+      value: "http://bitbucket-mcp.core-kagent.svc.cluster.local:3000/mcp"
+    
+    # ============================================
+    # LLM Gateway Configuration
+    # ============================================
+    - name: GATEWAY_BASE_URL
+      value: "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/llm/bedrock/default"
+    - name: GATEWAY_MODEL
+      value: "bedrock-default"
+    - name: GATEWAY_API_KEY
+      value: "irsa-placeholder-key"  # IRSA handles auth, this is just a placeholder
+    
+    # ============================================
+    # KAgent Configuration
+    # ============================================
+    - name: KAGENT_URL
+      value: "http://kagent-controller.core-kagent.svc.cluster.local:8083"
+    - name: PORT
+      value: "8080"
+    - name: HOST
+      value: "0.0.0.0"
+  
+  # Optional: Use secrets for sensitive values
+  # envFrom:
+  #   - secretRef:
+  #       name: otel-credentials  # If you store OTEL token in a secret
+  #   - secretRef:
+  #       name: gateway-credentials
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+

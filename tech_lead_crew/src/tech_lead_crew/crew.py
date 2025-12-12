@@ -106,5 +106,5 @@ class TechLeadCrew():
             tasks=[self.analyze_and_extract()],
             process=Process.sequential,
             verbose=True,
-            output_log_file=True,  # Enable file logging (saves to logs.txt)
+            output_log_file=False,  # Disable file logging; show output on console only
         )

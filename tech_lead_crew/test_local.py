@@ -19,6 +19,17 @@ if src_path not in sys.path:
 
 from tech_lead_crew.crew import TechLeadCrew
 
+# OTEL Instrumentation (if environment variables are set)
+# CrewAI should auto-instrument when CREWAI_TRACING_ENABLED=true,
+# but we manually instrument as a fallback to ensure it works
+if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("CREWAI_TRACING_ENABLED", "").lower() == "true":
+    try:
+        from opentelemetry.instrumentation.crewai import CrewAIInstrumentor
+        CrewAIInstrumentor().instrument()
+        print("✅ OTEL instrumentation enabled")
+    except ImportError:
+        print("⚠️  opentelemetry-instrumentation-crewai not found - OTEL instrumentation skipped")
+
 # Set environment variables for local testing
 # These should match your port-forwarded services
 
@@ -87,6 +98,18 @@ if __name__ == "__main__":
     print(f"  GATEWAY_MODEL: {os.getenv('GATEWAY_MODEL')}")
     api_key = os.getenv('GATEWAY_API_KEY', '')
     print(f"  GATEWAY_API_KEY: {'***SET***' if api_key else '❌ NOT SET - LLM calls will fail!'}")
+    
+    # Show tracing status
+    tracing_enabled = os.getenv('CREWAI_TRACING_ENABLED', '').lower() == 'true'
+    print(f"  CREWAI_TRACING_ENABLED: {tracing_enabled}")
+    if tracing_enabled:
+        otel_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT')
+        if otel_endpoint:
+            print(f"  OTEL_EXPORTER_OTLP_ENDPOINT: {otel_endpoint}")
+            print(f"  OTEL_SERVICE_NAME: {os.getenv('OTEL_SERVICE_NAME', 'not set')}")
+        else:
+            print(f"  OTEL_EXPORTER_OTLP_ENDPOINT: not set (will use CrewAI Cloud only)")
+    
     print("\n" + "=" * 60)
     
     # Create and run the crew
@@ -112,7 +135,11 @@ if __name__ == "__main__":
             print("\n" + "=" * 60)
             print("📊 Usage Metrics:")
             print("=" * 60)
-            print(json.dumps(crew.usage_metrics, indent=2))
+            # UsageMetrics is a Pydantic model, convert to dict first
+            if hasattr(crew.usage_metrics, 'dict'):
+                print(json.dumps(crew.usage_metrics.dict(), indent=2))
+            else:
+                print(json.dumps(crew.usage_metrics, indent=2, default=str))
         
         # Check for log file
         log_file = "logs.txt"
