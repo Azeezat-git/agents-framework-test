@@ -14,7 +14,10 @@ COPY pyproject.toml ./
 COPY src ./src
 
 # Install Python dependencies (from pyproject) after source is present
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --prefer-binary \
+    "urllib3>=1.26.18,<2.2" \
+    "idna>=3.6,<3.7" \
+    .
 
 EXPOSE 8080
 
