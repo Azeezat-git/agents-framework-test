@@ -5,19 +5,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install system deps and uv (faster resolver than pip)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir uv
 
 # Copy project metadata and source
 COPY pyproject.toml ./
 COPY src ./src
 
-# Install Python dependencies (from pyproject) after source is present
-RUN pip install --no-cache-dir --prefer-binary \
-    "urllib3>=1.26.18,<2.2" \
-    "idna>=3.6,<3.7" \
-    .
+# Install Python dependencies using uv (much faster resolver)
+RUN uv pip install --system --no-cache .
 
 EXPOSE 8080
 
