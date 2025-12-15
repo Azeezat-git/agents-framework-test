@@ -25,6 +25,9 @@ run_with_trigger = "tech_lead_crew.main:run_with_trigger"
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+tech_lead_crew = ["agent-card.json"]
+
 [tool.crewai]
 type = "crew"
 

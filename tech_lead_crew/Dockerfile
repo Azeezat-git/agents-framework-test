@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy project metadata and source
 COPY pyproject.toml ./
 COPY src ./src
+# Copy agent card
+COPY src/tech_lead_crew/agent-card.json ./src/tech_lead_crew/
 
 # Install Python dependencies using uv (much faster resolver)
 RUN uv pip install --system --no-cache .

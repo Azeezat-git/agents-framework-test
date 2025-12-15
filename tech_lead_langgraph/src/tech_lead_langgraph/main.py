@@ -178,7 +178,9 @@ def main():
     
     # 3. Create KAgent app or fallback to standalone
     if KAGENT_AVAILABLE:
-        app = KAgentApp(graph=graph, agent_card=agent_card)
+        from kagent.core._config import KAgentConfig
+        config = KAgentConfig()
+        app = KAgentApp(graph=graph, agent_card=agent_card, config=config)
         logger.info("✅ KAgent app created")
     else:
         # Fallback: Create a simple FastAPI wrapper

@@ -115,9 +115,24 @@ def main():
     else:
         logger.info(f"✅ Using KAGENT_URL from environment: {os.getenv('KAGENT_URL')}")
     
-    # 1. Load the agent card or define it inline
-    with open(os.path.join(os.path.dirname(__file__), "agent-card.json"), "r") as f:
-        agent_card = json.load(f)
+    # 1. Load the agent card
+    # Try installed package location first, then source location (for Docker builds)
+    agent_card_paths = [
+        os.path.join(os.path.dirname(__file__), "agent-card.json"),  # Installed package
+        os.path.join("/app", "src", "tech_lead_crew", "agent-card.json"),  # Docker source location
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "tech_lead_crew", "agent-card.json"),  # Local dev
+    ]
+    
+    agent_card = {}
+    for path in agent_card_paths:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                agent_card = json.load(f)
+            logger.info(f"✅ Loaded agent card from: {path}")
+            break
+    else:
+        logger.warning("⚠️  Agent card not found, using empty dict")
+        agent_card = {}
 
     # 2. Load the Crew, then create the kagent app
     app = KAgentApp(crew=TechLeadCrew().crew(), agent_card=agent_card)
