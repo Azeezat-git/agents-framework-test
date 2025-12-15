@@ -5,21 +5,25 @@ from typing import List
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
-# Try to import MCPServerHTTP - may be in different locations depending on crewai version
+# Try to import MCPServerHTTP or MCPServerAdapter - may be in different locations depending on crewai version
 try:
     from crewai.mcp import MCPServerHTTP
 except ImportError:
     try:
         from crewai_tools.mcp import MCPServerHTTP
     except ImportError:
-        # Fallback: try to import from crewai directly if available
         try:
             from crewai import MCPServerHTTP
         except ImportError:
-            raise ImportError(
-                "MCPServerHTTP not found. Please ensure crewai-tools[mcp] is installed. "
-                "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
-            )
+            # Fallback: use MCPServerAdapter from crewai_tools (available in newer versions)
+            try:
+                from crewai_tools import MCPServerAdapter
+                MCPServerHTTP = MCPServerAdapter  # Alias for compatibility
+            except ImportError:
+                raise ImportError(
+                    "MCPServerHTTP/MCPServerAdapter not found. Please ensure crewai-tools[mcp] is installed. "
+                    "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
+                )
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
@@ -85,30 +89,45 @@ class TechLeadCrew():
     def tech_lead_crew(self) -> Agent:
         """Tech Lead agent that uses Jira MCP over HTTP and Bedrock via gateway"""
         llm = self._build_llm()
+        # Build MCP server instances - handle both MCPServerHTTP and MCPServerAdapter APIs
+        jira_url = os.getenv("JIRA_MCP_URL") or ValueError(
+            "JIRA_MCP_URL must be set (no default). "
+            "For cluster via gateway, use e.g.: "
+            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
+        )
+        bitbucket_url = os.getenv("BITBUCKET_MCP_URL") or ValueError(
+            "BITBUCKET_MCP_URL must be set (no default). "
+            "For cluster via gateway, use e.g.: "
+            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
+        )
+        
+        # Try MCPServerHTTP API first (url parameter)
+        try:
+            jira_mcp = MCPServerHTTP(
+                url=jira_url,
+                streamable=True,
+                cache_tools_list=True,
+            )
+            bitbucket_mcp = MCPServerHTTP(
+                url=bitbucket_url,
+                streamable=True,
+                cache_tools_list=True,
+            )
+        except (TypeError, AttributeError):
+            # Fallback to MCPServerAdapter API (serverparams dict for SSE/HTTP)
+            from crewai_tools import MCPServerAdapter
+            jira_mcp = MCPServerAdapter(
+                serverparams={"url": jira_url},
+            )
+            bitbucket_mcp = MCPServerAdapter(
+                serverparams={"url": bitbucket_url},
+            )
+        
         return Agent(
             config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
             verbose=True,
             llm=llm,
-            mcps=[
-                MCPServerHTTP(
-                        url=os.getenv("JIRA_MCP_URL") or ValueError(
-                            "JIRA_MCP_URL must be set (no default). "
-                            "For cluster via gateway, use e.g.: "
-                            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
-                        ),
-                    streamable=True,
-                    cache_tools_list=True,
-                ),
-                MCPServerHTTP(
-                        url=os.getenv("BITBUCKET_MCP_URL") or ValueError(
-                            "BITBUCKET_MCP_URL must be set (no default). "
-                            "For cluster via gateway, use e.g.: "
-                            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
-                        ),
-                    streamable=True,
-                    cache_tools_list=True,
-                ),
-            ],
+            mcps=[jira_mcp, bitbucket_mcp],
         )
 
     @task
