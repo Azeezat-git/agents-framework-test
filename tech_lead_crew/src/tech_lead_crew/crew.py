@@ -6,29 +6,24 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
 # Try to import MCPServerAdapter first (newer API), then fallback to MCPServerHTTP
+# Note: Don't use logger here as it's not defined yet - will log later when used
 MCPServerAdapter = None
 MCPServerHTTP = None
 
 try:
     from crewai_tools.adapters.mcp_adapter import MCPServerAdapter
-    logger.info("✅ Found MCPServerAdapter from crewai_tools.adapters.mcp_adapter")
 except ImportError:
     try:
         from crewai_tools import MCPServerAdapter
-        logger.info("✅ Found MCPServerAdapter from crewai_tools")
     except ImportError:
-        logger.warning("⚠️  MCPServerAdapter not found, trying MCPServerHTTP")
         try:
             from crewai.mcp import MCPServerHTTP
-            logger.info("✅ Found MCPServerHTTP from crewai.mcp")
         except ImportError:
             try:
                 from crewai_tools.mcp import MCPServerHTTP
-                logger.info("✅ Found MCPServerHTTP from crewai_tools.mcp")
             except ImportError:
                 try:
                     from crewai import MCPServerHTTP
-                    logger.info("✅ Found MCPServerHTTP from crewai")
                 except ImportError:
                     raise ImportError(
                         "Neither MCPServerAdapter nor MCPServerHTTP found. "
@@ -153,12 +148,11 @@ class TechLeadCrew():
                         logger.info("Falling back to MCPServerHTTP")
                     else:
                         # Don't fail - log warning and continue without MCP
-                        logger.error(
+                        logger.warning(
                             f"Could not create MCP adapters. Agent will start but MCP tools may not work. "
                             f"JIRA_MCP_URL: {jira_url}, BITBUCKET_MCP_URL: {bitbucket_url}. "
                             f"Adapter error: {adapter_error}, HTTP error: {http_error}"
                         )
-                        # Create placeholder MCP objects or skip MCP entirely
                         logger.warning("⚠️  Agent will start without MCP tools - they may fail when called")
         
         # Strategy 2: Fallback to MCPServerHTTP if MCPServerAdapter failed or not available

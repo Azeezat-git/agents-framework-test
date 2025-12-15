@@ -416,18 +416,40 @@ def synthesize_output(state: AgentState) -> AgentState:
         if project_key:
             repo_context_parts.append(f"- Project Key: {project_key}")
         
-        # Extract repository structure info
+        # Track MCP availability for transparency
+        bitbucket_mcp_available = repo_files is not None and repo_list is not None
+        mcp_status_note = ""
+        if not bitbucket_mcp_available:
+            mcp_status_note = "\n⚠️ NOTE: Bitbucket MCP server is currently unavailable. Repository file structure and detailed repository information could not be retrieved. The analysis is based on Jira issue data and extracted repository metadata only."
+        
+        # Extract repository structure info - handle any repository name dynamically
         repo_structure = ""
         if repo_files:
             import json
             # Extract key information about project structure
             if isinstance(repo_files, dict):
-                if "web_store" in repo_files:
-                    web_store_files = repo_files["web_store"]
-                    if isinstance(web_store_files, dict) and "files" in web_store_files:
-                        files_list = web_store_files["files"]
+                structure_parts = []
+                
+                # Process root files if present
+                if "root" in repo_files:
+                    root_files = repo_files["root"]
+                    if isinstance(root_files, dict) and "files" in root_files:
+                        root_file_list = root_files["files"]
+                        root_file_names = [f.get("path", "") for f in root_file_list if isinstance(f, dict)][:15]
+                        if root_file_names:
+                            structure_parts.append(f"Root files: {', '.join(root_file_names[:10])}")
+                
+                for dir_key, dir_data in repo_files.items():
+                    if dir_key == "root":
+                        continue  # Already processed
+                    if isinstance(dir_data, dict) and "files" in dir_data:
+                        files_list = dir_data["files"]
                         file_names = [f.get("path", "") for f in files_list if isinstance(f, dict)][:20]
-                        repo_structure = f"Key files in web-store: {', '.join(file_names[:10])}"
+                        if file_names:
+                            structure_parts.append(f"Files in {dir_key}: {', '.join(file_names[:10])}")
+                
+                if structure_parts:
+                    repo_structure = "\n".join(structure_parts)
         
         # Build comprehensive prompt matching CrewAI format
         prompt_parts = [
@@ -455,6 +477,9 @@ def synthesize_output(state: AgentState) -> AgentState:
             "=== REPOSITORY CONTEXT ===",
         ]
         
+        if mcp_status_note:
+            prompt_parts.append(mcp_status_note)
+        
         if repo_structure:
             prompt_parts.append(repo_structure)
         
@@ -462,6 +487,9 @@ def synthesize_output(state: AgentState) -> AgentState:
             import json
             prompt_parts.append("\nRepository file structure:")
             prompt_parts.append(json.dumps(repo_files, indent=2)[:2000])  # Limit size
+        elif workspace or repo_slug:
+            # If we have workspace/repo info but no file structure, mention it
+            prompt_parts.append("\n⚠️ Repository file structure could not be retrieved (Bitbucket MCP unavailable).")
         
         prompt_parts.extend([
             "",
@@ -544,7 +572,9 @@ def synthesize_output(state: AgentState) -> AgentState:
             "- Be comprehensive and detailed - this specification will be used by developers",
             "- Focus on WHAT needs to be built, NOT HOW to implement it",
             "- Include all relevant details from the Jira issue",
-            "- Analyze the repository structure to provide accurate technology stack and project context",
+            "- If Bitbucket MCP is unavailable (you'll see a warning note above), explicitly mention this in the 'Repository Context' section: '⚠️ Note: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only.'",
+            "- If repository file structure is available, analyze it to provide accurate technology stack and project context",
+            "- If repository file structure is NOT available, infer technology stack from Jira issue description and repository name/context",
             "- Do NOT include code examples or implementation details",
         ])
         

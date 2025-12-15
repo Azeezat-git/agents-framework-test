@@ -14,8 +14,10 @@ analyze_and_extract:
 
     If a repository is mentioned in the Jira issue:
     - Extract the workspace value from the Bitbucket URL or use Jira project key as fallback
-    - Use Bitbucket MCP tools (listRepositories, listRepositoryFiles) to analyze repository structure
-    - Identify project type (frontend, backend, infrastructure, etc.)
+    - Try to use Bitbucket MCP tools (listRepositories, listRepositoryFiles) to analyze repository structure
+    - If Bitbucket MCP tools are unavailable or fail, explicitly mention this in your output: "⚠️ Note: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only."
+    - If MCP tools work, identify project type (frontend, backend, infrastructure, etc.) from repository structure
+    - If MCP tools fail, infer project type from Jira issue description and repository name/context
     - Focus on structure and type, NOT code patterns or implementation details
 
     Then produce:
@@ -24,7 +26,7 @@ analyze_and_extract:
     - Input/Output specifications
     - Constraints and validations
     - Integration requirements (external systems/APIs/components)
-    - Repository Context: Project type and basic structure (if repository was analyzed)
+    - Repository Context: Project type and basic structure (if repository was analyzed). If Bitbucket MCP was unavailable, explicitly state this limitation.
 
     Do NOT include implementation details or code-level guidance. Focus on WHAT, not HOW.
   expected_output: >

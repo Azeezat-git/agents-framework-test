@@ -4,6 +4,7 @@ import os
 
 import uvicorn
 from kagent.crewai import KAgentApp
+from kagent.core._config import KAgentConfig
 
 from tech_lead_crew.crew import TechLeadCrew
 
@@ -135,7 +136,9 @@ def main():
         agent_card = {}
 
     # 2. Load the Crew, then create the kagent app
-    app = KAgentApp(crew=TechLeadCrew().crew(), agent_card=agent_card)
+    config = KAgentConfig()
+    app = KAgentApp(crew=TechLeadCrew().crew(), agent_card=agent_card, config=config)
+    logger.info("✅ KAgent app created with config")
 
     # 3. Build the FastAPI app and run the server
     server = app.build()
