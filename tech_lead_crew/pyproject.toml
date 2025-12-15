@@ -5,12 +5,11 @@ description = "tech-lead-crew using crewAI"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "kagent-crewai",
-    "crewai[tools]>=1.6.0,<2.0.0",
+    "kagent-crewai",  # This will bring in the compatible crewai version
     "crewai-tools[mcp]>=0.10.0,<2.0.0",  # CrewAI MCP adapters
     "uvicorn",        # ASGI server for FastAPI
     "langchain-openai",  # For ChatOpenAI to configure LLM with custom baseUrl
-    "mcp",            # Keep mcp in case it’s needed; primary will be crewai-tools
+    "mcp",            # Keep mcp in case it's needed; primary will be crewai-tools
 ]
 
 [project.scripts]
