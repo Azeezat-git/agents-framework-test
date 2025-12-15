@@ -5,25 +5,36 @@ from typing import List
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
-# Try to import MCPServerHTTP or MCPServerAdapter - may be in different locations depending on crewai version
+# Try to import MCPServerAdapter first (newer API), then fallback to MCPServerHTTP
+MCPServerAdapter = None
+MCPServerHTTP = None
+
 try:
-    from crewai.mcp import MCPServerHTTP
+    from crewai_tools.adapters.mcp_adapter import MCPServerAdapter
+    logger.info("✅ Found MCPServerAdapter from crewai_tools.adapters.mcp_adapter")
 except ImportError:
     try:
-        from crewai_tools.mcp import MCPServerHTTP
+        from crewai_tools import MCPServerAdapter
+        logger.info("✅ Found MCPServerAdapter from crewai_tools")
     except ImportError:
+        logger.warning("⚠️  MCPServerAdapter not found, trying MCPServerHTTP")
         try:
-            from crewai import MCPServerHTTP
+            from crewai.mcp import MCPServerHTTP
+            logger.info("✅ Found MCPServerHTTP from crewai.mcp")
         except ImportError:
-            # Fallback: use MCPServerAdapter from crewai_tools (available in newer versions)
             try:
-                from crewai_tools import MCPServerAdapter
-                MCPServerHTTP = MCPServerAdapter  # Alias for compatibility
+                from crewai_tools.mcp import MCPServerHTTP
+                logger.info("✅ Found MCPServerHTTP from crewai_tools.mcp")
             except ImportError:
-                raise ImportError(
-                    "MCPServerHTTP/MCPServerAdapter not found. Please ensure crewai-tools[mcp] is installed. "
-                    "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
-                )
+                try:
+                    from crewai import MCPServerHTTP
+                    logger.info("✅ Found MCPServerHTTP from crewai")
+                except ImportError:
+                    raise ImportError(
+                        "Neither MCPServerAdapter nor MCPServerHTTP found. "
+                        "Please ensure crewai-tools[mcp] is installed. "
+                        "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
+                    )
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
@@ -90,44 +101,119 @@ class TechLeadCrew():
         """Tech Lead agent that uses Jira MCP over HTTP and Bedrock via gateway"""
         llm = self._build_llm()
         # Build MCP server instances - handle both MCPServerHTTP and MCPServerAdapter APIs
-        jira_url = os.getenv("JIRA_MCP_URL") or ValueError(
-            "JIRA_MCP_URL must be set (no default). "
-            "For cluster via gateway, use e.g.: "
-            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
-        )
-        bitbucket_url = os.getenv("BITBUCKET_MCP_URL") or ValueError(
-            "BITBUCKET_MCP_URL must be set (no default). "
-            "For cluster via gateway, use e.g.: "
-            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
-        )
+        jira_url = os.getenv("JIRA_MCP_URL")
+        if not jira_url:
+            raise ValueError(
+                "JIRA_MCP_URL must be set (no default). "
+                "For cluster via gateway, use e.g.: "
+                "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
+            )
+        bitbucket_url = os.getenv("BITBUCKET_MCP_URL")
+        if not bitbucket_url:
+            raise ValueError(
+                "BITBUCKET_MCP_URL must be set (no default). "
+                "For cluster via gateway, use e.g.: "
+                "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
+            )
         
-        # Try MCPServerHTTP API first (url parameter)
-        try:
-            jira_mcp = MCPServerHTTP(
-                url=jira_url,
-                streamable=True,
-                cache_tools_list=True,
+        # Initialize MCP servers - create them but don't connect yet (lazy connection)
+        # This allows the agent to start even if MCP servers are temporarily unavailable
+        jira_mcp = None
+        bitbucket_mcp = None
+        
+        # Try to create MCP server instances without connecting
+        # They will connect when tools are actually called
+        if MCPServerAdapter:
+            # Strategy 1: Use MCPServerAdapter (newer API, preferred)
+            logger.info("Creating MCPServerAdapter instances (lazy connection)")
+            try:
+                # Create adapters - they should connect lazily when tools are called
+                # Use SSE protocol for STREAMABLE_HTTP MCP servers
+                jira_mcp = MCPServerAdapter(
+                    serverparams={"url": jira_url, "protocol": "sse"}
+                )
+                bitbucket_mcp = MCPServerAdapter(
+                    serverparams={"url": bitbucket_url, "protocol": "sse"}
+                )
+                logger.info("✅ Created MCPServerAdapter instances (will connect when tools are used)")
+            except Exception as adapter_error:
+                logger.warning(f"MCPServerAdapter creation failed: {adapter_error}, trying HTTP protocol")
+                try:
+                    # Try HTTP protocol as fallback
+                    jira_mcp = MCPServerAdapter(
+                        serverparams={"url": jira_url, "protocol": "http"}
+                    )
+                    bitbucket_mcp = MCPServerAdapter(
+                        serverparams={"url": bitbucket_url, "protocol": "http"}
+                    )
+                    logger.info("✅ Created MCPServerAdapter instances with HTTP protocol")
+                except Exception as http_error:
+                    logger.warning(f"MCPServerAdapter with HTTP also failed: {http_error}")
+                    if MCPServerHTTP:
+                        logger.info("Falling back to MCPServerHTTP")
+                    else:
+                        # Don't fail - log warning and continue without MCP
+                        logger.error(
+                            f"Could not create MCP adapters. Agent will start but MCP tools may not work. "
+                            f"JIRA_MCP_URL: {jira_url}, BITBUCKET_MCP_URL: {bitbucket_url}. "
+                            f"Adapter error: {adapter_error}, HTTP error: {http_error}"
+                        )
+                        # Create placeholder MCP objects or skip MCP entirely
+                        logger.warning("⚠️  Agent will start without MCP tools - they may fail when called")
+        
+        # Strategy 2: Fallback to MCPServerHTTP if MCPServerAdapter failed or not available
+        if (not jira_mcp or not bitbucket_mcp) and MCPServerHTTP:
+            logger.info("Attempting to use MCPServerHTTP (fallback)")
+            try:
+                import inspect
+                sig = inspect.signature(MCPServerHTTP.__init__)
+                if 'url' in sig.parameters:
+                    # Create without connecting - should be lazy
+                    jira_mcp = MCPServerHTTP(
+                        url=jira_url,
+                        streamable=True,
+                        cache_tools_list=True,
+                    )
+                    bitbucket_mcp = MCPServerHTTP(
+                        url=bitbucket_url,
+                        streamable=True,
+                        cache_tools_list=True,
+                    )
+                    logger.info("✅ Created MCPServerHTTP instances (will connect when tools are used)")
+                else:
+                    raise AttributeError("MCPServerHTTP doesn't support 'url' parameter")
+            except Exception as http_api_error:
+                logger.warning(f"MCPServerHTTP creation failed: {http_api_error}")
+                logger.warning("⚠️  Agent will start without MCP tools - they may fail when called")
+        
+        # Don't fail if MCP creation fails - agent can still start
+        # MCP tools will fail when called, but that's better than crashing on startup
+        if not jira_mcp or not bitbucket_mcp:
+            logger.warning(
+                "⚠️  Could not create MCP server instances. "
+                "Agent will start but MCP tools will not be available. "
+                f"MCPServerAdapter available: {MCPServerAdapter is not None}, "
+                f"MCPServerHTTP available: {MCPServerHTTP is not None}"
             )
-            bitbucket_mcp = MCPServerHTTP(
-                url=bitbucket_url,
-                streamable=True,
-                cache_tools_list=True,
-            )
-        except (TypeError, AttributeError):
-            # Fallback to MCPServerAdapter API (serverparams dict for SSE/HTTP)
-            from crewai_tools import MCPServerAdapter
-            jira_mcp = MCPServerAdapter(
-                serverparams={"url": jira_url},
-            )
-            bitbucket_mcp = MCPServerAdapter(
-                serverparams={"url": bitbucket_url},
-            )
+            # Create empty list instead of failing
+            jira_mcp = None
+            bitbucket_mcp = None
+        
+        # Only include MCP servers if they were successfully created
+        mcp_list = []
+        if jira_mcp:
+            mcp_list.append(jira_mcp)
+        if bitbucket_mcp:
+            mcp_list.append(bitbucket_mcp)
+        
+        if not mcp_list:
+            logger.warning("⚠️  No MCP servers available - agent will work without MCP tools")
         
         return Agent(
             config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
             verbose=True,
             llm=llm,
-            mcps=[jira_mcp, bitbucket_mcp],
+            mcps=mcp_list if mcp_list else None,  # Pass None or empty list if no MCPs
         )
 
     @task

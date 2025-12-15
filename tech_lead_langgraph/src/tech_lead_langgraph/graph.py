@@ -91,6 +91,68 @@ def create_mcp_tools():
     return []
 
 
+def process_input(state: AgentState) -> AgentState:
+    """Node: Process initial input and extract Jira issue key from messages"""
+    messages = state.get("messages", [])
+    
+    # Ensure messages are BaseMessage objects, not tuples
+    normalized_messages = []
+    for msg in messages:
+        if isinstance(msg, tuple):
+            # Convert tuple to proper message object
+            # Tuples from LangGraph are typically (message_type, content) or just content
+            if len(msg) == 2:
+                msg_type, content = msg
+                if msg_type == "human" or msg_type == "user":
+                    normalized_messages.append(HumanMessage(content=str(content)))
+                elif msg_type == "ai" or msg_type == "assistant":
+                    normalized_messages.append(AIMessage(content=str(content)))
+                else:
+                    # Default to HumanMessage
+                    normalized_messages.append(HumanMessage(content=str(content)))
+            else:
+                # Single element tuple, treat as content
+                normalized_messages.append(HumanMessage(content=str(msg[0])))
+        elif isinstance(msg, BaseMessage):
+            normalized_messages.append(msg)
+        else:
+            # Convert other types to HumanMessage
+            normalized_messages.append(HumanMessage(content=str(msg)))
+    
+    # Update state with normalized messages
+    state["messages"] = normalized_messages
+    
+    # Extract Jira issue key from the last user message
+    jira_issue_key = None
+    if normalized_messages:
+        last_message = normalized_messages[-1]
+        content = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        
+        # Extract Jira issue key (format: PROJ-123)
+        import re
+        match = re.search(r'([A-Z]+-\d+)', content)
+        if match:
+            jira_issue_key = match.group(1)
+            logger.info(f"Extracted Jira issue key from message: {jira_issue_key}")
+        else:
+            # If no issue key found, try to use the whole content as issue key
+            content_stripped = content.strip()
+            if re.match(r'^[A-Z]+-\d+$', content_stripped):
+                jira_issue_key = content_stripped
+                logger.info(f"Using entire message as Jira issue key: {jira_issue_key}")
+    
+    if jira_issue_key:
+        state["jira_issue_key"] = jira_issue_key
+        logger.info(f"✅ Processed input, extracted issue key: {jira_issue_key}")
+    else:
+        logger.warning("No Jira issue key found in messages")
+        # Try to use existing jira_issue_key from state
+        if not state.get("jira_issue_key"):
+            state["jira_issue_key"] = ""
+    
+    return state
+
+
 def fetch_jira_issue(state: AgentState) -> AgentState:
     """Node: Fetch Jira issue using MCP tool"""
     issue_key = state.get("jira_issue_key")
@@ -489,10 +551,24 @@ def synthesize_output(state: AgentState) -> AgentState:
         prompt = "\n".join(prompt_parts)
         
         # Call LLM
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import HumanMessage, AIMessage
         response = llm.invoke([HumanMessage(content=prompt)])
         
-        state["final_output"] = response.content if hasattr(response, "content") else str(response)
+        # Extract response content properly
+        if hasattr(response, "content"):
+            response_content = response.content
+        elif isinstance(response, (str, dict)):
+            response_content = str(response)
+        else:
+            response_content = str(response)
+        
+        state["final_output"] = response_content
+        
+        # Add the AI response to messages for proper state management
+        if "messages" not in state:
+            state["messages"] = []
+        state["messages"] = list(state["messages"]) + [AIMessage(content=response_content)]
+        
         logger.info("✅ Synthesized final output")
     except Exception as e:
         logger.error(f"Error synthesizing output: {e}")
@@ -502,11 +578,16 @@ def synthesize_output(state: AgentState) -> AgentState:
     return state
 
 
-def build_graph():
-    """Build the LangGraph state machine"""
+def build_graph(checkpointer=None):
+    """Build the LangGraph state machine
+    
+    Args:
+        checkpointer: Optional checkpointer for state persistence (e.g., KAgentCheckpointer)
+    """
     workflow = StateGraph(AgentState)
     
     # Add nodes (mapping from CrewAI tasks)
+    workflow.add_node("process_input", process_input)
     workflow.add_node("fetch_jira", fetch_jira_issue)
     workflow.add_node("extract_repo", extract_repo_info)
     workflow.add_node("list_repos", list_repositories)
@@ -514,14 +595,19 @@ def build_graph():
     workflow.add_node("synthesize", synthesize_output)
     
     # Define edges (sequential flow like CrewAI Process.sequential)
-    workflow.set_entry_point("fetch_jira")
+    workflow.set_entry_point("process_input")
+    workflow.add_edge("process_input", "fetch_jira")
     workflow.add_edge("fetch_jira", "extract_repo")
     workflow.add_edge("extract_repo", "list_repos")
     workflow.add_edge("list_repos", "list_files")
     workflow.add_edge("list_files", "synthesize")
     workflow.add_edge("synthesize", END)
     
-    return workflow.compile()
+    # Compile with checkpointer if provided (for KAgent integration)
+    if checkpointer:
+        return workflow.compile(checkpointer=checkpointer)
+    else:
+        return workflow.compile()
 
 
 if __name__ == "__main__":
