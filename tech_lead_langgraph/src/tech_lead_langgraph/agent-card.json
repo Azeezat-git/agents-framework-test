@@ -1,19 +1,38 @@
 {
   "name": "tech-lead-langgraph",
   "description": "Tech Lead agent using LangGraph framework. Analyzes Jira issues and extracts requirements with Bitbucket repository context.",
+  "url": "localhost:8080",
   "version": "0.1.0",
-  "capabilities": [
-    "jira_analysis",
-    "requirements_extraction",
-    "repository_analysis"
-  ],
+  "capabilities": {
+    "streaming": true
+  },
   "defaultInputModes": ["text"],
   "defaultOutputModes": ["text"],
   "skills": [
-    "Jira issue analysis",
-    "Requirements extraction",
-    "Bitbucket repository exploration",
-    "Implementation specification generation"
+    {
+      "id": "jira-analysis",
+      "name": "Jira issue analysis",
+      "description": "Analyzes Jira issues to extract requirements and context",
+      "tags": ["jira", "analysis"]
+    },
+    {
+      "id": "requirements-extraction",
+      "name": "Requirements extraction",
+      "description": "Extracts and structures requirements from Jira tasks",
+      "tags": ["requirements", "extraction"]
+    },
+    {
+      "id": "repository-exploration",
+      "name": "Bitbucket repository exploration",
+      "description": "Explores Bitbucket repositories to understand codebase structure",
+      "tags": ["bitbucket", "repository"]
+    },
+    {
+      "id": "spec-generation",
+      "name": "Implementation specification generation",
+      "description": "Generates detailed implementation specifications",
+      "tags": ["specification", "implementation"]
+    }
   ]
 }
 
