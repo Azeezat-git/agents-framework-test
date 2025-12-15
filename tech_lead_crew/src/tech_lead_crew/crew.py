@@ -66,22 +66,12 @@ class TechLeadCrew():
         os.environ["OPENAI_API_BASE"] = openai_base_url  # safety for variants
         
         litellm.suppress_debug_info = True
-        # Use "just-dummy" to match LangGraph implementation
-        # The gateway routes by URL path (/llm/bedrock/default), NOT by model name
-        # ChatOpenAI accepts any model name when using custom base_url
-        # If CrewAI calls LiteLLM directly and it fails, we'll handle it gracefully
-        custom_model = "just-dummy"
-        
-        # Configure LiteLLM to recognize "just-dummy" (helps if CrewAI calls LiteLLM directly)
-        # Add to model_cost_map so LiteLLM doesn't reject it
-        if not hasattr(litellm, 'model_cost_map') or not litellm.model_cost_map:
-            litellm.model_cost_map = {}
-        # Add just-dummy to model cost map (LiteLLM uses this for validation)
-        if "just-dummy" not in litellm.model_cost_map:
-            litellm.model_cost_map["just-dummy"] = {
-                "input_cost_per_token": 0.0000015,
-                "output_cost_per_token": 0.000002
-            }
+        # Use "gpt-3.5-turbo" which LiteLLM recognizes (CrewAI calls LiteLLM internally)
+        # IMPORTANT: The gateway routes by URL path (/llm/bedrock/default), NOT by model name
+        # So even though we use "gpt-3.5-turbo", the gateway will still route to Bedrock
+        # because the base_url points to /llm/bedrock/default
+        # The model name is just metadata for LiteLLM validation - it doesn't affect routing
+        custom_model = "gpt-3.5-turbo"
         
         class ModelLoggingHandler(BaseCallbackHandler):
             def on_llm_end(self, response, **kwargs):  # type: ignore[override]

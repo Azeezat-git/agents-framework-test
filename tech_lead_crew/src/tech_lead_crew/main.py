@@ -2,6 +2,14 @@ import json
 import logging
 import os
 
+# Disable CrewAI's proprietary telemetry service (telemetry.crewai.com)
+# This is SEPARATE from OpenTelemetry (OTEL) - your OTEL traces/logs/metrics will still work!
+# CrewAI telemetry = CrewAI's analytics service (times out in cluster)
+# OTEL = Standard observability protocol (sends to your OTEL_EXPORTER_OTLP_ENDPOINT)
+# Your OTEL instrumentation in setup_otel_instrumentation() is unaffected by this
+os.environ["CREWAI_DISABLE_TELEMETRY"] = "1"
+os.environ["DO_NOT_TRACK"] = "1"
+
 import uvicorn
 from kagent.crewai import KAgentApp
 from kagent.core._config import KAgentConfig
