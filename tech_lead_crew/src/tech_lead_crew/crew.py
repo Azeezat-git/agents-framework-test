@@ -66,7 +66,22 @@ class TechLeadCrew():
         os.environ["OPENAI_API_BASE"] = openai_base_url  # safety for variants
         
         litellm.suppress_debug_info = True
+        # Use "just-dummy" to match LangGraph implementation
+        # The gateway routes by URL path (/llm/bedrock/default), NOT by model name
+        # ChatOpenAI accepts any model name when using custom base_url
+        # If CrewAI calls LiteLLM directly and it fails, we'll handle it gracefully
         custom_model = "just-dummy"
+        
+        # Configure LiteLLM to recognize "just-dummy" (helps if CrewAI calls LiteLLM directly)
+        # Add to model_cost_map so LiteLLM doesn't reject it
+        if not hasattr(litellm, 'model_cost_map') or not litellm.model_cost_map:
+            litellm.model_cost_map = {}
+        # Add just-dummy to model cost map (LiteLLM uses this for validation)
+        if "just-dummy" not in litellm.model_cost_map:
+            litellm.model_cost_map["just-dummy"] = {
+                "input_cost_per_token": 0.0000015,
+                "output_cost_per_token": 0.000002
+            }
         
         class ModelLoggingHandler(BaseCallbackHandler):
             def on_llm_end(self, response, **kwargs):  # type: ignore[override]
@@ -120,40 +135,30 @@ class TechLeadCrew():
         # They will connect when tools are actually called
         if MCPServerAdapter:
             # Strategy 1: Use MCPServerAdapter (newer API, preferred)
-            logger.info("Creating MCPServerAdapter instances (lazy connection)")
+            logger.info("Creating MCPServerAdapter instances")
             try:
-                # Create adapters - they should connect lazily when tools are called
-                # Use SSE protocol for STREAMABLE_HTTP MCP servers
+                # MCPServerAdapter connects immediately, so we need to handle connection errors
+                # Try to create adapters - they will attempt to connect
                 jira_mcp = MCPServerAdapter(
-                    serverparams={"url": jira_url, "protocol": "sse"}
+                    serverparams={"url": jira_url}
                 )
+                logger.info("✅ Created Jira MCPServerAdapter")
+            except Exception as jira_error:
+                logger.warning(f"Jira MCPServerAdapter creation failed: {jira_error}")
+                jira_mcp = None
+            
+            try:
                 bitbucket_mcp = MCPServerAdapter(
-                    serverparams={"url": bitbucket_url, "protocol": "sse"}
+                    serverparams={"url": bitbucket_url}
                 )
-                logger.info("✅ Created MCPServerAdapter instances (will connect when tools are used)")
-            except Exception as adapter_error:
-                logger.warning(f"MCPServerAdapter creation failed: {adapter_error}, trying HTTP protocol")
-                try:
-                    # Try HTTP protocol as fallback
-                    jira_mcp = MCPServerAdapter(
-                        serverparams={"url": jira_url, "protocol": "http"}
-                    )
-                    bitbucket_mcp = MCPServerAdapter(
-                        serverparams={"url": bitbucket_url, "protocol": "http"}
-                    )
-                    logger.info("✅ Created MCPServerAdapter instances with HTTP protocol")
-                except Exception as http_error:
-                    logger.warning(f"MCPServerAdapter with HTTP also failed: {http_error}")
-                    if MCPServerHTTP:
-                        logger.info("Falling back to MCPServerHTTP")
-                    else:
-                        # Don't fail - log warning and continue without MCP
-                        logger.warning(
-                            f"Could not create MCP adapters. Agent will start but MCP tools may not work. "
-                            f"JIRA_MCP_URL: {jira_url}, BITBUCKET_MCP_URL: {bitbucket_url}. "
-                            f"Adapter error: {adapter_error}, HTTP error: {http_error}"
-                        )
-                        logger.warning("⚠️  Agent will start without MCP tools - they may fail when called")
+                logger.info("✅ Created Bitbucket MCPServerAdapter")
+            except Exception as bitbucket_error:
+                logger.warning(f"Bitbucket MCPServerAdapter creation failed: {bitbucket_error}")
+                bitbucket_mcp = None
+            
+            # If both failed, try fallback
+            if not jira_mcp and not bitbucket_mcp and MCPServerHTTP:
+                logger.info("Both MCPServerAdapter instances failed, falling back to MCPServerHTTP")
         
         # Strategy 2: Fallback to MCPServerHTTP if MCPServerAdapter failed or not available
         if (not jira_mcp or not bitbucket_mcp) and MCPServerHTTP:
