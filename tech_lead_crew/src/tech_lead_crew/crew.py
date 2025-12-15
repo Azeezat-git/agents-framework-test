@@ -76,18 +76,20 @@ class TechLeadCrew():
             llm=llm,
             mcps=[
                 MCPServerHTTP(
-                    url=os.getenv(
-                        "JIRA_MCP_URL",
-                        "http://jira-mcp.core-kagent.svc.cluster.local:3001/mcp",
-                    ),
+                        url=os.getenv("JIRA_MCP_URL") or ValueError(
+                            "JIRA_MCP_URL must be set (no default). "
+                            "For cluster via gateway, use e.g.: "
+                            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
+                        ),
                     streamable=True,
                     cache_tools_list=True,
                 ),
                 MCPServerHTTP(
-                    url=os.getenv(
-                        "BITBUCKET_MCP_URL",
-                        "http://bitbucket-mcp.core-kagent.svc.cluster.local:3000/mcp",
-                    ),
+                        url=os.getenv("BITBUCKET_MCP_URL") or ValueError(
+                            "BITBUCKET_MCP_URL must be set (no default). "
+                            "For cluster via gateway, use e.g.: "
+                            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
+                        ),
                     streamable=True,
                     cache_tools_list=True,
                 ),

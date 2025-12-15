@@ -76,7 +76,13 @@ class MCPLangChainTool(BaseTool):
 
 def create_jira_tools() -> list[BaseTool]:
     """Create Jira MCP tools as LangChain tools"""
-    jira_mcp_url = os.getenv("JIRA_MCP_URL", "http://localhost:3001/mcp")
+    jira_mcp_url = os.getenv("JIRA_MCP_URL")
+    if not jira_mcp_url:
+        raise ValueError(
+            "JIRA_MCP_URL must be set (no default). "
+            "For cluster via gateway, use e.g.: "
+            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/"
+        )
     
     return [
         MCPLangChainTool(
@@ -91,7 +97,13 @@ def create_jira_tools() -> list[BaseTool]:
 
 def create_bitbucket_tools() -> list[BaseTool]:
     """Create Bitbucket MCP tools as LangChain tools"""
-    bitbucket_mcp_url = os.getenv("BITBUCKET_MCP_URL", "http://localhost:3000/mcp")
+    bitbucket_mcp_url = os.getenv("BITBUCKET_MCP_URL")
+    if not bitbucket_mcp_url:
+        raise ValueError(
+            "BITBUCKET_MCP_URL must be set (no default). "
+            "For cluster via gateway, use e.g.: "
+            "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
+        )
     
     return [
         MCPLangChainTool(

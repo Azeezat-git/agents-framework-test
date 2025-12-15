@@ -136,8 +136,12 @@ aws ssm start-session \
 
 ### Environment Variables Explained
 
-- **`JIRA_MCP_URL`**: URL for the Jira MCP server (default: `http://localhost:3001/mcp`)
-- **`BITBUCKET_MCP_URL`**: URL for the Bitbucket MCP server (default: `http://localhost:3000/mcp`)
+- **`JIRA_MCP_URL`**: URL for the Jira MCP server (required; no default). Examples:
+  - Local/port-forward: `http://localhost:3001/mcp`
+  - Cluster via gateway: `http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/jira-mcp/`
+- **`BITBUCKET_MCP_URL`**: URL for the Bitbucket MCP server (required; no default). Examples:
+  - Local/port-forward: `http://localhost:3000/mcp`
+  - Cluster via gateway: `http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/`
 - **`GATEWAY_BASE_URL`**: Agent Gateway endpoint for LLM access (default: `http://localhost:8080/llm/bedrock/default`)
 - **`GATEWAY_API_KEY`**: API key for Agent Gateway (use `"irsa-placeholder-key"` for IRSA-authenticated gateways)
 - **`CREWAI_TRACING_ENABLED`**: Enable tracing (default: `false`)
