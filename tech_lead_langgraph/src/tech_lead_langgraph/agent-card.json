@@ -1,7 +1,7 @@
 {
   "name": "tech-lead-langgraph",
   "description": "Tech Lead agent using LangGraph framework. Analyzes Jira issues and extracts requirements with Bitbucket repository context.",
-  "url": "localhost:8080",
+  "url": "http://tech-lead-langgraph-agent.core-kagent.svc.cluster.local:8080",
   "version": "0.1.0",
   "capabilities": {
     "streaming": true

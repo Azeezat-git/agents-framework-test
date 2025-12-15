@@ -1,7 +1,7 @@
 {
   "name": "tech-lead-crew",
   "description": "Tech Lead agent that analyzes Jira tasks and creates comprehensive implementation plans. Extracts requirements, analyzes repositories, and produces clear specifications describing WHAT needs to be built.",
-  "url": "localhost:8080",
+  "url": "http://tech-lead-crew-agent.core-kagent.svc.cluster.local:8080",
   "version": "1.0.0",
   "capabilities": {
     "streaming": true
