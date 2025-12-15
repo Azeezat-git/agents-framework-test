@@ -9,6 +9,7 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "fastmcp>=0.5.0",
     "kagent-langgraph>=0.7.6",  # KAgent integration for LangGraph
+    "anthropic>=0.40.0",  # Required by kagent-langgraph (imported at module level)
     "uvicorn",
     "opentelemetry-instrumentation-langchain",  # LangChain/LangGraph instrumentation
     "opentelemetry-instrumentation-logging",  # Python logging instrumentation

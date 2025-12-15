@@ -3,8 +3,23 @@ import logging
 from typing import List
 
 from crewai import Agent, Crew, Process, Task
-from crewai.mcp import MCPServerHTTP
 from crewai.project import CrewBase, agent, crew, task
+
+# Try to import MCPServerHTTP - may be in different locations depending on crewai version
+try:
+    from crewai.mcp import MCPServerHTTP
+except ImportError:
+    try:
+        from crewai_tools.mcp import MCPServerHTTP
+    except ImportError:
+        # Fallback: try to import from crewai directly if available
+        try:
+            from crewai import MCPServerHTTP
+        except ImportError:
+            raise ImportError(
+                "MCPServerHTTP not found. Please ensure crewai-tools[mcp] is installed. "
+                "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
+            )
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI

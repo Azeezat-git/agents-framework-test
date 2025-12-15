@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "kagent-crewai",  # This will bring in the compatible crewai version
+    "anthropic>=0.40.0",  # Required by kagent-crewai (for consistency with langraph)
     "crewai-tools[mcp]>=0.10.0,<2.0.0",  # CrewAI MCP adapters
     "uvicorn",        # ASGI server for FastAPI
     "langchain-openai",  # For ChatOpenAI to configure LLM with custom baseUrl

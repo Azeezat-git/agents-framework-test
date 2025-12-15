@@ -101,20 +101,19 @@ def main():
     # This ensures all traces are captured from the start
     setup_otel_instrumentation()
     
-    # Set KAGENT_URL if not already set
-    # For local testing, port-forward: kubectl port-forward -n core-kagent svc/kagent-controller 8083:8083
+    # KAGENT_URL should be set by KAgent controller automatically
+    # In cluster: http://kagent-controller.core-kagent:8083
+    # For local testing: kubectl port-forward -n core-kagent svc/kagent-controller 8083:8083
     # Then set: export KAGENT_URL=http://localhost:8083
-    # Or use the cluster service URL: http://kagent-controller.core-kagent.svc.cluster.local:8083
     if not os.getenv("KAGENT_URL"):
-        kagent_url = os.getenv(
-            "KAGENT_URL",
-            "http://kagent-controller.core-kagent.svc.cluster.local:8083"
-        )
+        # Fallback only if KAgent controller didn't inject it (shouldn't happen in cluster)
+        kagent_url = "http://kagent-controller.core-kagent:8083"
         os.environ["KAGENT_URL"] = kagent_url
-        logger.info(f"Using KAGENT_URL: {kagent_url}")
-        logger.info("To override, set KAGENT_URL environment variable")
+        logger.warning(f"⚠️  KAGENT_URL not set by KAgent controller, using fallback: {kagent_url}")
         logger.info("For local testing, port-forward: kubectl port-forward -n core-kagent svc/kagent-controller 8083:8083")
         logger.info("Then set: export KAGENT_URL=http://localhost:8083")
+    else:
+        logger.info(f"✅ Using KAGENT_URL from environment: {os.getenv('KAGENT_URL')}")
     
     # 1. Load the agent card or define it inline
     with open(os.path.join(os.path.dirname(__file__), "agent-card.json"), "r") as f:
