@@ -133,3 +133,4 @@ The code in `main.py` automatically sets up OTEL when environment variables are 
 - Verify the OTEL endpoint is reachable from the cluster
 - Check for errors in pod logs
 
+

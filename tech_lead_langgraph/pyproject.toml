@@ -10,6 +10,10 @@ dependencies = [
     "fastmcp>=0.5.0",
     "kagent-langgraph>=0.7.6",  # KAgent integration for LangGraph
     "uvicorn",
+    "opentelemetry-instrumentation-langchain",  # LangChain/LangGraph instrumentation
+    "opentelemetry-instrumentation-logging",  # Python logging instrumentation
+    "opentelemetry-exporter-otlp-proto-http",  # OTLP HTTP exporter for traces/logs
+    "opentelemetry-exporter-otlp-proto-grpc",  # OTLP gRPC exporter for metrics
 ]
 
 [build-system]

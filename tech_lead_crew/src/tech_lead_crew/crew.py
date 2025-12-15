@@ -76,12 +76,18 @@ class TechLeadCrew():
             llm=llm,
             mcps=[
                 MCPServerHTTP(
-                    url=os.getenv("JIRA_MCP_URL", "http://localhost:3001/mcp"),
+                    url=os.getenv(
+                        "JIRA_MCP_URL",
+                        "http://jira-mcp.core-kagent.svc.cluster.local:3001/mcp",
+                    ),
                     streamable=True,
                     cache_tools_list=True,
                 ),
                 MCPServerHTTP(
-                    url=os.getenv("BITBUCKET_MCP_URL", "http://localhost:3000/mcp"),
+                    url=os.getenv(
+                        "BITBUCKET_MCP_URL",
+                        "http://bitbucket-mcp.core-kagent.svc.cluster.local:3000/mcp",
+                    ),
                     streamable=True,
                     cache_tools_list=True,
                 ),

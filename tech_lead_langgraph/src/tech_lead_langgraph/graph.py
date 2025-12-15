@@ -76,8 +76,14 @@ def create_mcp_tools():
     """Create LangChain tools from MCP servers"""
     # TODO: Convert MCP tools to LangChain BaseTool instances
     # For now, return empty list - will implement MCP tool integration
-    jira_mcp_url = os.getenv("JIRA_MCP_URL", "http://localhost:3001/mcp")
-    bitbucket_mcp_url = os.getenv("BITBUCKET_MCP_URL", "http://localhost:3000/mcp")
+    jira_mcp_url = os.getenv(
+        "JIRA_MCP_URL",
+        "http://jira-mcp.core-kagent.svc.cluster.local:3001/mcp",
+    )
+    bitbucket_mcp_url = os.getenv(
+        "BITBUCKET_MCP_URL",
+        "http://bitbucket-mcp.core-kagent.svc.cluster.local:3000/mcp",
+    )
     
     # Placeholder - will implement proper MCP tool wrapping
     return []

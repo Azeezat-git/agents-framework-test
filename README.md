@@ -109,10 +109,6 @@ aws ssm start-session \
    export GATEWAY_BASE_URL=http://localhost:8080/llm/bedrock/default
    export GATEWAY_API_KEY="irsa-placeholder-key"
    
-   # Optional: Enable CrewAI Cloud tracing (creates ephemeral URL for quick viewing)
-   export CREWAI_TRACING_ENABLED=true
-   export CREWAI_LOG_LEVEL=INFO  # Use DEBUG for detailed LLM prompts/responses
-   
    # Optional: Send telemetry to your company's OTEL endpoint
    # (CrewAI automatically uses opentelemetry-instrumentation-crewai when CREWAI_TRACING_ENABLED=true)
    export OTEL_EXPORTER_OTLP_ENDPOINT=https://your.company.collector:4318
@@ -121,6 +117,10 @@ aws ssm start-session \
    export OTEL_TRACES_EXPORTER=otlp
    export OTEL_LOGS_EXPORTER=otlp
    export OTEL_METRICS_EXPORTER=otlp
+   
+   # Optional: Enable CrewAI OTEL spans (uses your OTEL exporter settings)
+   export CREWAI_TRACING_ENABLED=true
+   export CREWAI_LOG_LEVEL=INFO  # Use DEBUG for detailed LLM prompts/responses
    ```
 
 2. **Run the test script:**
@@ -176,31 +176,15 @@ After execution, you'll get:
 1. **Connection refused errors**: Ensure port-forwarding is active and ports are correct
 2. **401 Unauthorized**: Check that `GATEWAY_API_KEY` is set (even if using IRSA)
 3. **MCP connection failures**: Verify MCP server URLs and that services are running in the cluster
-4. **No trace URL**: Ensure `CREWAI_TRACING_ENABLED=true` and you're logged in with `crewai login`
+4. **No trace export**: Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` is set and reachable; optionally set `CREWAI_TRACING_ENABLED=true` to emit spans
 
 ### Telemetry and Observability
 
-**CrewAI Telemetry:**
-- **Focus**: Traces, Logs, and Metrics
-- **Automatic**: When `CREWAI_TRACING_ENABLED=true`, CrewAI automatically uses the installed `opentelemetry-instrumentation-crewai` package
-- **No Code Changes**: Just set environment variables - no imports or SDK calls needed
-
-**Two Possible Destinations:**
-
-1. **CrewAI Cloud (Ephemeral URL)**
-   - Quick debugging and visualization
-   - URL appears automatically when `CREWAI_TRACING_ENABLED=true`
-   - Authenticate with: `crewai login`
-
-2. **Your Company's OTEL Endpoint** (Recommended for Production)
-   - Full control over telemetry destination
-   - Traces, logs, and metrics sent to your infrastructure
-   - Set `OTEL_EXPORTER_OTLP_ENDPOINT` and related variables
-   - View in your company's observability platform (Jaeger, Grafana, Datadog, etc.)
-
-**Note**: You can have both enabled simultaneously. The CrewAI Cloud URL is a convenience feature, while your OTEL configuration builds the production observability pipeline.
-
-**Verification**: After running, check your company's observability platform for traces from service `tech-lead-crew`.
+**CrewAI Telemetry (OTEL-first):**
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and headers if needed) to send traces/logs/metrics.
+- Set `OTEL_SERVICE_NAME=tech-lead-crew` for filtering.
+- Optional: `CREWAI_TRACING_ENABLED=true` makes CrewAI emit spans using your OTEL exporter.
+- Verify traces in your observability platform (Jaeger/Grafana/Datadog, etc.).
 
 ## Tech Lead LangGraph
 
@@ -243,11 +227,6 @@ Same port-forwarding setup as CrewAI (see [Port-Forwarding Setup](#port-forwardi
    export GATEWAY_BASE_URL=http://localhost:8080/llm/bedrock/default
    export GATEWAY_API_KEY="irsa-placeholder-key"
    
-   # Optional: Enable LangSmith tracing
-   export LANGCHAIN_TRACING_V2=true
-   export LANGCHAIN_PROJECT=tech-lead-langgraph
-   export LANGCHAIN_API_KEY=your-api-key  # Optional, for cloud tracing
-   
    # Optional: Send telemetry to your company's OTEL endpoint
    export OTEL_EXPORTER_OTLP_ENDPOINT=https://your.company.collector:4318
    export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer YOUR_TOKEN"  # If auth required
@@ -274,12 +253,6 @@ Same port-forwarding setup as CrewAI (see [Port-Forwarding Setup](#port-forwardi
 - **`BITBUCKET_MCP_URL`**: URL for the Bitbucket MCP server (default: `http://localhost:3000/mcp`)
 - **`GATEWAY_BASE_URL`**: Agent Gateway endpoint for LLM access (default: `http://localhost:8080/llm/bedrock/default`)
 - **`GATEWAY_API_KEY`**: API key for Agent Gateway (use `"irsa-placeholder-key"` for IRSA-authenticated gateways)
-- **`LANGCHAIN_TRACING_V2`**: Enable LangSmith tracing (default: `false`)
-  - When enabled, automatically activates LangChain/LangGraph instrumentation
-  - Creates LangSmith trace URLs for viewing
-  - Also sends to your OTEL endpoint if `OTEL_EXPORTER_OTLP_ENDPOINT` is set
-- **`LANGCHAIN_PROJECT`**: Project name for LangSmith (default: `tech-lead-langgraph`)
-- **`LANGCHAIN_API_KEY`**: LangSmith API key (optional, for cloud tracing)
 - **`OTEL_EXPORTER_OTLP_ENDPOINT`**: Your company's OTEL collector endpoint (e.g., `https://collector.company.com:4318`)
 - **`OTEL_EXPORTER_OTLP_HEADERS`**: Authentication headers if required (e.g., `"Authorization=Bearer TOKEN"`)
 - **`OTEL_SERVICE_NAME`**: Service name for filtering in your observability platform
@@ -292,9 +265,8 @@ Same port-forwarding setup as CrewAI (see [Port-Forwarding Setup](#port-forwardi
 After execution, you'll get:
 
 1. **Console Output**: The implementation plan and issue summary
-2. **LangSmith Trace URL** (if `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set): URL for viewing in LangSmith dashboard
-3. **OTEL Telemetry** (if `OTEL_EXPORTER_OTLP_ENDPOINT` is set): Traces, logs, and metrics sent to your company's OTEL endpoint
-4. **State Summary**: Information about what was fetched (Jira issue, repositories, files)
+2. **OTEL Telemetry** (if `OTEL_EXPORTER_OTLP_ENDPOINT` is set): Traces, logs, and metrics sent to your company's OTEL endpoint
+3. **State Summary**: Information about what was fetched (Jira issue, repositories, files)
 
 ### Key Differences from CrewAI
 
@@ -308,31 +280,15 @@ After execution, you'll get:
 1. **Connection refused errors**: Ensure port-forwarding is active and ports are correct
 2. **401 Unauthorized**: Check that `GATEWAY_API_KEY` is set (even if using IRSA)
 3. **MCP connection failures**: Verify MCP server URLs and that services are running in the cluster
-4. **No trace URL**: Ensure `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set for cloud tracing
+4. **No trace export**: Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` is set and reachable
 
 ### Telemetry and Observability
 
-**LangGraph Telemetry:**
-- **Focus**: Traces, Logs, and Metrics
-- **Automatic**: When `LANGCHAIN_TRACING_V2=true`, LangGraph automatically uses the installed `opentelemetry-instrumentation-langchain` package
-- **No Code Changes**: Just set environment variables - no imports or SDK calls needed
-
-**Two Possible Destinations:**
-
-1. **LangSmith** (if API key provided)
-   - Cloud-based tracing and visualization
-   - URL appears automatically when `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` is set
-   - View at: https://smith.langchain.com
-
-2. **Your Company's OTEL Endpoint** (Recommended for Production)
-   - Full control over telemetry destination
-   - Traces, logs, and metrics sent to your infrastructure
-   - Set `OTEL_EXPORTER_OTLP_ENDPOINT` and related variables
-   - View in your company's observability platform (Jaeger, Grafana, Datadog, etc.)
-
-**Note**: You can have both enabled simultaneously. LangSmith provides cloud-based debugging, while your OTEL configuration builds the production observability pipeline.
-
-**Verification**: After running, check your company's observability platform for traces from service `tech-lead-langgraph`.
+**LangGraph Telemetry (OTEL-only):**
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and headers if needed) to send traces/logs/metrics.
+- `OTEL_SERVICE_NAME=tech-lead-langgraph` for filtering.
+- Uses `opentelemetry-instrumentation-langchain` for spans; no LangSmith integration.
+- Verify traces in your observability platform (Jaeger/Grafana/Datadog, etc.).
 
 ## Framework Comparison
 

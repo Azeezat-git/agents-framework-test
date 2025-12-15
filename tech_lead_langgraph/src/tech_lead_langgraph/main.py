@@ -19,25 +19,18 @@ logger = logging.getLogger(__name__)
 def setup_otel_instrumentation():
     """
     Setup OpenTelemetry instrumentation for LangGraph (traces, logs, metrics).
-    
-    This should be called before creating the graph to ensure all telemetry
-    is captured. Works with both LangSmith and custom OTEL endpoints.
-    
-    Environment variables needed:
-    - OTEL_EXPORTER_OTLP_ENDPOINT: Your OTEL collector endpoint (optional)
-    - OTEL_SERVICE_NAME: Service name for filtering (optional, defaults to tech-lead-langgraph)
-    - OTEL_EXPORTER_OTLP_HEADERS: Auth headers if needed (optional)
-    - OTEL_TRACES_EXPORTER: Set to 'otlp' to export traces (default: otlp if endpoint set)
-    - OTEL_LOGS_EXPORTER: Set to 'otlp' to export logs (optional)
-    - OTEL_METRICS_EXPORTER: Set to 'otlp' to export metrics (optional)
-    - LANGCHAIN_TRACING_V2: Set to 'true' to enable LangSmith tracing (optional)
-    - OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: Set to 'true' for auto log export (optional)
+    OTEL is the single source of telemetry; LangSmith is intentionally disabled.
+
+    Environment variables:
+    - OTEL_EXPORTER_OTLP_ENDPOINT: Your OTEL collector endpoint (e.g., https://collector:4318)
+    - OTEL_EXPORTER_OTLP_HEADERS: Auth headers if needed (e.g., "Authorization=Bearer TOKEN")
+    - OTEL_SERVICE_NAME: Service name (defaults to tech-lead-langgraph)
+    - OTEL_TRACES_EXPORTER: Set to 'otlp' to export traces
+    - OTEL_LOGS_EXPORTER: Set to 'otlp' to export logs
+    - OTEL_METRICS_EXPORTER: Set to 'otlp' to export metrics
     """
-    # Only instrument if OTEL endpoint is set OR LangChain tracing is enabled
     otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    langchain_tracing = os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true"
-    
-    if otel_endpoint or langchain_tracing:
+    if otel_endpoint:
         try:
             # 1. Setup LangChain/LangGraph instrumentation (traces)
             from opentelemetry.instrumentation.langchain import LangchainInstrumentor
@@ -46,7 +39,7 @@ def setup_otel_instrumentation():
             
             # 2. Setup Python logging to OTEL (if enabled)
             logs_exporter = os.getenv("OTEL_LOGS_EXPORTER", "").lower()
-            if logs_exporter == "otlp" and otel_endpoint:
+            if logs_exporter == "otlp":
                 try:
                     from opentelemetry.instrumentation.logging import LoggingInstrumentor
                     LoggingInstrumentor().instrument(set_logging_format=True)
@@ -58,7 +51,7 @@ def setup_otel_instrumentation():
             
             # 3. Setup metrics export (if enabled)
             metrics_exporter = os.getenv("OTEL_METRICS_EXPORTER", "").lower()
-            if metrics_exporter == "otlp" and otel_endpoint:
+            if metrics_exporter == "otlp":
                 try:
                     from opentelemetry import metrics
                     from opentelemetry.sdk.metrics import MeterProvider
@@ -85,34 +78,17 @@ def setup_otel_instrumentation():
                 except Exception as e:
                     logger.warning(f"⚠️  Failed to enable OTEL metrics: {e}")
             
-            logger.info("✅ OTEL instrumentation enabled for LangGraph")
-            if otel_endpoint:
-                logger.info(f"   Sending to: {otel_endpoint}")
-                logger.info(f"   Traces: {'✅' if os.getenv('OTEL_TRACES_EXPORTER', 'otlp').lower() == 'otlp' else '❌'}")
-                logger.info(f"   Logs: {'✅' if logs_exporter == 'otlp' else '❌'}")
-                logger.info(f"   Metrics: {'✅' if metrics_exporter == 'otlp' else '❌'}")
-            else:
-                logger.info("   Using LangSmith (set OTEL_EXPORTER_OTLP_ENDPOINT for custom endpoint)")
-            
-            # 4. Setup LangSmith if enabled
-            if langchain_tracing:
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                if not os.getenv("LANGCHAIN_PROJECT"):
-                    os.environ["LANGCHAIN_PROJECT"] = "tech-lead-langgraph"
-                if os.getenv("LANGCHAIN_API_KEY"):
-                    logger.info("✅ LangSmith tracing enabled (with API key)")
-                else:
-                    logger.info("✅ LangSmith tracing enabled (local mode - no API key)")
+            logger.info("✅ Custom OTEL endpoint configured")
+            logger.info(f"   Sending to: {otel_endpoint}")
+            logger.info(f"   Traces: {'✅' if os.getenv('OTEL_TRACES_EXPORTER', 'otlp').lower() == 'otlp' else '❌'}")
+            logger.info(f"   Logs: {'✅' if logs_exporter == 'otlp' else '❌'}")
+            logger.info(f"   Metrics: {'✅' if metrics_exporter == 'otlp' else '❌'}")
         except ImportError:
-            logger.warning("⚠️  opentelemetry-instrumentation-langchain not found - OTEL instrumentation skipped")
-            # Fallback to LangSmith only if OTEL not available
-            if langchain_tracing:
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                if not os.getenv("LANGCHAIN_PROJECT"):
-                    os.environ["LANGCHAIN_PROJECT"] = "tech-lead-langgraph"
-                logger.info("✅ LangSmith tracing enabled (OTEL not available)")
+            logger.warning("⚠️  opentelemetry-instrumentation-langchain not found - custom OTEL skipped")
         except Exception as e:
-            logger.warning(f"⚠️  Failed to enable OTEL instrumentation: {e}")
+            logger.warning(f"⚠️  Failed to enable custom OTEL: {e}")
+    else:
+        logger.info("OTEL_EXPORTER_OTLP_ENDPOINT not set; telemetry disabled.")
 
 
 def run(inputs: dict | None = None):

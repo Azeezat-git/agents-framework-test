@@ -159,3 +159,4 @@ if __name__ == "__main__":
         print("   from opentelemetry.instrumentation.crewai import CrewAIInstrumentor")
         print("   CrewAIInstrumentor().instrument()")
 
+
