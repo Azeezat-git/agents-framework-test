@@ -1,22 +1,20 @@
 FROM python:3.13-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install system deps if needed later; keep minimal for now
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first for layer caching
+# Copy project metadata and source
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
-# Copy application code
 COPY src ./src
-COPY agent-card.json ./agent-card.json
 
-
+# Install Python dependencies (from pyproject) after source is present
+RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 
