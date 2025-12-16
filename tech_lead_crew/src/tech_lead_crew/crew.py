@@ -127,20 +127,37 @@ class TechLeadCrew():
         logger.info(f"✅ Jira MCP URL: {jira_url}")
         logger.info(f"✅ Bitbucket MCP URL: {bitbucket_url}")
         
-        # Get MCP tools using CrewBase's method (handles lifecycle properly)
-        mcp_tools = self.get_mcp_tools()
-        logger.info(f"✅ Loaded {len(mcp_tools)} MCP tool(s) via get_mcp_tools()")
-        if mcp_tools:
-            tool_names = [t.name if hasattr(t, 'name') else str(t) for t in mcp_tools[:5]]
-            logger.info(f"   Tools: {tool_names}")
+        # Try to get MCP tools using CrewBase's method (handles lifecycle properly)
+        # If connection fails during initialization, fall back to string URLs (lazy connection)
+        mcp_tools = []
+        try:
+            mcp_tools = self.get_mcp_tools()
+            logger.info(f"✅ Loaded {len(mcp_tools)} MCP tool(s) via get_mcp_tools()")
+            if mcp_tools:
+                tool_names = [t.name if hasattr(t, 'name') else str(t) for t in mcp_tools[:5]]
+                logger.info(f"   Tools: {tool_names}")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to load MCP tools via get_mcp_tools(): {e}")
+            logger.info("   Falling back to string URLs (lazy connection)")
+            mcp_tools = []  # Will use string URLs instead
         
-        # Create agent with MCP tools
-        agent = Agent(
-            config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
-            verbose=True,  # Enable verbose to see tool calls and responses
-            llm=llm,
-            tools=mcp_tools,  # Pass explicitly loaded MCP tools
-        )
+        # Create agent with MCP tools or string URLs
+        agent_kwargs = {
+            "config": self.agents_config['tech_lead_crew'],  # type: ignore[index]
+            "verbose": True,  # Enable verbose to see tool calls and responses
+            "llm": llm,
+        }
+        
+        if mcp_tools:
+            # Use explicitly loaded tools
+            agent_kwargs["tools"] = mcp_tools
+            logger.info("   Using explicitly loaded MCP tools")
+        else:
+            # Fall back to string URLs (lazy connection)
+            agent_kwargs["mcps"] = [jira_url, bitbucket_url]
+            logger.info("   Using string URLs for lazy MCP tool loading")
+        
+        agent = Agent(**agent_kwargs)
         
         return agent
 
