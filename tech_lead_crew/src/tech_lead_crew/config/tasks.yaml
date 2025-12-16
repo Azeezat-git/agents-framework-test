@@ -2,9 +2,17 @@ analyze_and_extract:
   description: >
     🔍 Analyzing Jira issue and extracting requirements in one pass. 
     
-    The issue key is provided in the input: {jira_issue_key}
+    The user's input is: {input}
     
-    Call the jira_get_issue tool exactly once with issue_key="{jira_issue_key}". If it fails, report the failure and stop; do NOT retry.
+    Extract the Jira issue key from the input. The issue key format is typically "PROJECT-123" (e.g., "TECBAC-209", "TECBAC-131").
+    The input may be:
+    - A plain Jira issue key: "TECBAC-209"
+    - A sentence containing an issue key: "Please analyze TECBAC-209"
+    - A dictionary string representation
+    
+    Extract the issue key pattern (e.g., "TECBAC-209") from the input and use it to call the jira_get_issue tool.
+    
+    Call the jira_get_issue tool exactly once with the extracted issue key. If it fails, report the failure and stop; do NOT retry.
 
     ⚠️ CRITICAL: You MUST use the EXACT data from the jira_get_issue tool response. 
     
