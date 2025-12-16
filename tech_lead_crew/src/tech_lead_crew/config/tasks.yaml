@@ -2,6 +2,19 @@ analyze_and_extract:
   description: >
     Analyze the provided Jira issue and extract requirements to create an implementation specification.
     
+    The Jira issue key is provided in the input: {input}
+    
+    ⚠️ CRITICAL: Extract the issue key from the input using pattern matching (format: [LETTERS]-[NUMBERS]).
+    The input may be:
+    - A plain issue key: "TECBAC-131"
+    - A sentence: "analyze TECBAC-131" or "Please analyze TECBAC-209"
+    - A dictionary string representation
+    
+    You MUST:
+    1. Extract the issue key pattern (e.g., "TECBAC-131") from the input
+    2. Call jira_get_issue with the EXACT extracted issue key
+    3. Do NOT use a different issue key than what you extracted from the input
+    
   expected_output: >
     A combined issue summary and requirements extraction with the fields listed above, with no additional tool calls beyond the single jira_get_issue invocation. 
     
@@ -11,4 +24,5 @@ analyze_and_extract:
     - If you wrote a title that doesn't match tool response["summary"], your output is WRONG - fix it
     - Do NOT infer titles from repository structure - ONLY use tool response data
     - The tool response is the SOURCE OF TRUTH - ignore everything else when writing title/description
+    - The "Issue Key" in your output MUST match the issue key you extracted from the input
   agent: tech_lead_crew

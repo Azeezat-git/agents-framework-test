@@ -31,12 +31,29 @@ tech_lead_crew:
     - getRepositoryFile: Get the contents of a specific file
     
     Your mandatory workflow:
-    1. Validate Issue Key: Extract Jira issue key from user input. The input may be:
-       - A plain Jira issue key: "TECBAC-209"
-       - A sentence containing an issue key: "Please analyze TECBAC-209"
-       - A dictionary string representation
-       Extract the issue key pattern (e.g., "TECBAC-209") from the input. If missing, ask: "Please provide a valid Jira issue key (format: PROJ-123)."
-    2. Fetch Jira Issue: Call jira_get_issue tool exactly once with the extracted issue key. If it fails, report the failure and stop; do NOT retry.
+    1. Validate Issue Key: Extract Jira issue key from user input using pattern matching.
+       The issue key follows a standard pattern: [LETTERS]-[NUMBERS] (e.g., "PROJ-123", "TECBAC-209", "ABC-42").
+       Pattern rules:
+       - Starts with uppercase letters (project key)
+       - Followed by a hyphen "-"
+       - Ends with numbers (issue number)
+       - Examples of valid patterns: "TECBAC-131", "PROJ-42", "ABC-999", "XYZ-1"
+       Input formats you may receive:
+       - Plain issue key: "TECBAC-131"
+       - Sentence with issue key: "analyze TECBAC-131" or "Please analyze PROJ-42"
+       - Dictionary string: {"input": "TECBAC-131"}
+       ⚠️ CRITICAL: 
+       - Use REGEX or pattern matching to find the pattern [LETTERS]-[NUMBERS] in the input
+       - Extract the EXACT issue key that matches this pattern from the user's input
+       - Do NOT use a hardcoded or previously seen issue key
+       - Do NOT assume the issue key - extract it from the actual input text
+       - If no pattern matches, ask: "Please provide a valid Jira issue key (format: PROJ-123)."
+    2. Fetch Jira Issue: Call jira_get_issue tool exactly once with the EXTRACTED issue key from step 1.
+       ⚠️ CRITICAL: 
+       - Use the EXACT issue key you extracted in step 1 (the pattern match result)
+       - Do NOT use any other issue key, even if it looks similar
+       - The tool call must use the issue key that was in the user's input
+       If the tool call fails, report the failure and stop; do NOT retry.
     3. Extract Requirements: From the Jira tool response, extract:
        ⚠️ CRITICAL: You MUST use the EXACT data from the jira_get_issue tool response.
        MANDATORY WORKFLOW:
@@ -92,13 +109,13 @@ tech_lead_crew:
        - Call listRepositories with the ACTUAL workspace value (e.g., "SCOPT1", not "WORKSPACE")
        - Use listRepositoryFiles to get basic project structure and identify project type
        - Use getRepositoryFile to review relevant files if needed
-       - Only if the tool calls actually fail (return an error), then mention: "⚠️ Note: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only."
        - If MCP tools work successfully, identify project type (frontend, backend, infrastructure, etc.) from repository structure
-       - If MCP tools fail, infer project type from Jira issue description and repository name/context
+       - If MCP tools fail or repository is not available, indicate "Repository: N/A" in the output
+       - Infer project type from Jira issue description and repository name/context if repository data is not available
        - Focus on structure and type, NOT code patterns or implementation details
        - IMPORTANT: When analyzing repository structure, identify and list key files present (e.g., next.config.ts, tsconfig.json, package.json, src/app/, Dockerfile, requirements.txt, etc.) in the Repository Context section. This helps developers understand the project structure.
     5. Render Outputs: Present Issue Summary and Implementation Specification:
-       - Issue Summary: title (EXACT from tool response["summary"]), assignee, labels, linked repo(s) (or "Not specified" if no repo),
+       - Issue Summary: title (EXACT from tool response["summary"]), assignee, labels, linked repo(s) (or "N/A" if no repo),
          acceptance criteria (bulleted), description (EXACT from tool response["description"])
        - Implementation Specification: Technology-agnostic requirements focusing on WHAT needs to be built:
          * Deliverable: Concrete output that must be created or modified
@@ -106,7 +123,7 @@ tech_lead_crew:
          * Input/Output Specifications: Data inputs, expected outputs, formats, interfaces
          * Constraints & Validations: Rules, limitations, or checks
          * Integration Requirements: External systems, APIs, or existing components
-         * Repository Context: Project type and basic structure (if repository specified). Include a "Key Files Present" section listing important configuration and source files (e.g., next.config.ts, tsconfig.json, package.json, src/app/, Dockerfile, requirements.txt, etc.) that help developers understand the project structure. If Bitbucket MCP was unavailable, explicitly state this limitation.
+         * Repository Context: Project type and basic structure (if repository specified). Include a "Key Files Present" section listing important configuration and source files (e.g., next.config.ts, tsconfig.json, package.json, src/app/, Dockerfile, requirements.txt, etc.) that help developers understand the project structure. If repository is not available, indicate "Repository: N/A".
        Do NOT include implementation details or code-level guidance. Focus on WHAT, not HOW.
     
     CRITICAL WORKSPACE EXTRACTION RULES:

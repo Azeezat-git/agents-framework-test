@@ -174,7 +174,39 @@ def fetch_jira_issue(state: AgentState) -> AgentState:
             if isinstance(result_str, str):
                 # Try to parse JSON
                 if result_str.strip().startswith('{') or result_str.strip().startswith('['):
-                    state["jira_issue"] = json.loads(result_str)
+                    parsed = json.loads(result_str)
+                    # Handle case where result is a list (take first element)
+                    if isinstance(parsed, list) and len(parsed) > 0:
+                        first_item = parsed[0]
+                        # If first item is a string containing JSON, parse it
+                        if isinstance(first_item, str):
+                            # Try to extract JSON from text format
+                            # MCP might return text format like: type='text' text='{...}'
+                            import re
+                            # Match pattern: text='{...}' or text="{...}"
+                            json_match = re.search(r"text=['\"](.*)['\"]", first_item, re.DOTALL)
+                            if json_match:
+                                json_str = json_match.group(1)
+                                # Unescape the JSON string (handle \n, \r, etc.)
+                                json_str = json_str.encode().decode('unicode_escape')
+                                try:
+                                    state["jira_issue"] = json.loads(json_str)
+                                except json.JSONDecodeError:
+                                    # Try direct JSON parse without unescaping
+                                    try:
+                                        state["jira_issue"] = json.loads(first_item)
+                                    except:
+                                        state["jira_issue"] = first_item
+                            else:
+                                # Try direct JSON parse
+                                try:
+                                    state["jira_issue"] = json.loads(first_item)
+                                except:
+                                    state["jira_issue"] = first_item
+                        else:
+                            state["jira_issue"] = first_item
+                    else:
+                        state["jira_issue"] = parsed
                 else:
                     # Not JSON, might be error message
                     logger.warning(f"Unexpected result format: {result_str[:100]}")
@@ -198,11 +230,19 @@ def extract_repo_info(state: AgentState) -> AgentState:
         logger.warning("No Jira issue data to extract repo info from")
         return state
     
+    # Handle case where jira_issue is a list (take first element)
+    if isinstance(jira_issue, list):
+        if len(jira_issue) > 0:
+            jira_issue = jira_issue[0]
+        else:
+            logger.warning("Jira issue is an empty list")
+            return state
+    
     logger.info("Extracting repository information from Jira issue")
     try:
         # Extract Bitbucket URL from Jira issue description or links
-        description = jira_issue.get("description", "")
-        url = jira_issue.get("url", "")
+        description = jira_issue.get("description", "") if isinstance(jira_issue, dict) else ""
+        url = jira_issue.get("url", "") if isinstance(jira_issue, dict) else ""
         
         # Look for Bitbucket URL pattern: https://source.app.pconnect.biz/projects/{workspace}/repos/{repo}/browse
         import re
@@ -224,10 +264,17 @@ def extract_repo_info(state: AgentState) -> AgentState:
                 repo_slug = match.group(2)
             else:
                 # Fallback: use project key as workspace
-                project_key = jira_issue.get("project", {}).get("key") if isinstance(jira_issue.get("project"), dict) else None
-                if project_key:
-                    workspace = project_key
-                    logger.info(f"Using project key as workspace fallback: {workspace}")
+                if isinstance(jira_issue, dict):
+                    project = jira_issue.get("project")
+                    if isinstance(project, dict):
+                        project_key = project.get("key")
+                    elif isinstance(project, str):
+                        project_key = project
+                    else:
+                        project_key = None
+                    if project_key:
+                        workspace = project_key
+                        logger.info(f"Using project key as workspace fallback: {workspace}")
         
         if workspace:
             state["workspace"] = workspace
@@ -334,7 +381,15 @@ def synthesize_output(state: AgentState) -> AgentState:
     logger.info("Synthesizing final output")
     try:
         # Build comprehensive prompt matching CrewAI task format
-        jira_issue = state.get("jira_issue", {})
+        jira_issue_raw = state.get("jira_issue", {})
+        # Handle case where jira_issue is a list (take first element)
+        if isinstance(jira_issue_raw, list) and len(jira_issue_raw) > 0:
+            jira_issue = jira_issue_raw[0] if isinstance(jira_issue_raw[0], dict) else {}
+        elif isinstance(jira_issue_raw, dict):
+            jira_issue = jira_issue_raw
+        else:
+            jira_issue = {}
+        
         repo_files = state.get("repo_files", {})
         repo_list = state.get("repo_list", [])
         workspace = state.get("workspace")
@@ -416,19 +471,9 @@ def synthesize_output(state: AgentState) -> AgentState:
         if project_key:
             repo_context_parts.append(f"- Project Key: {project_key}")
         
-        # Track repository availability
-        # If no workspace/repo_slug, repository is not available in the issue (don't mention MCP)
-        # If workspace/repo_slug exist but repo_files/repo_list are None, MCP tools were called but failed
+        # Track repository availability - no MCP messages, just indicate if repo is available or not
         has_repo_in_issue = workspace or repo_slug
-        bitbucket_mcp_available = repo_files is not None and repo_list is not None
-        mcp_status_note = ""
-        
-        if not has_repo_in_issue:
-            # No repository mentioned in issue - just state that, don't mention MCP
-            mcp_status_note = "\n⚠️ Note: Repository not available in issue. Analysis is based on Jira issue data only."
-        elif not bitbucket_mcp_available:
-            # Repository was mentioned but MCP tools failed
-            mcp_status_note = "\n⚠️ NOTE: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only."
+        has_repo_data = repo_files is not None and repo_list is not None
         
         # Extract repository structure info - handle any repository name dynamically
         repo_structure = ""
@@ -485,17 +530,18 @@ def synthesize_output(state: AgentState) -> AgentState:
             "=== REPOSITORY CONTEXT ===",
         ]
         
-        if mcp_status_note:
-            prompt_parts.append(mcp_status_note)
-        
-        if repo_structure:
-            prompt_parts.append(repo_structure)
-        
-        if repo_files:
-            import json
-            prompt_parts.append("\nRepository file structure:")
-            prompt_parts.append(json.dumps(repo_files, indent=2)[:2000])  # Limit size
-        # Note: MCP unavailability warning is already handled in mcp_status_note above
+        # Add repository info if available, otherwise indicate N/A
+        if not has_repo_in_issue:
+            prompt_parts.append("Repository: N/A (not specified in issue)")
+        elif not has_repo_data:
+            prompt_parts.append("Repository: Available but file structure not retrieved")
+        else:
+            if repo_structure:
+                prompt_parts.append(repo_structure)
+            if repo_files:
+                import json
+                prompt_parts.append("\nRepository file structure:")
+                prompt_parts.append(json.dumps(repo_files, indent=2)[:2000])  # Limit size
         
         prompt_parts.extend([
             "",
@@ -514,7 +560,7 @@ def synthesize_output(state: AgentState) -> AgentState:
             "**Assignee:** " + issue_assignee,
             "**Reporter:** " + issue_reporter,
             "**Labels:** " + (', '.join(issue_labels) if issue_labels else 'None specified'),
-            "**Linked Repository:** " + (issue_url if issue_url else 'Not specified'),
+            "**Linked Repository:** " + (issue_url if issue_url else 'N/A'),
             "",
             "**Project Information:**",
             f"- Project Key: {project_key if project_key else 'N/A'}",
@@ -578,9 +624,9 @@ def synthesize_output(state: AgentState) -> AgentState:
             "- Be comprehensive and detailed - this specification will be used by developers",
             "- Focus on WHAT needs to be built, NOT HOW to implement it",
             "- Include all relevant details from the Jira issue",
-            "- If Bitbucket MCP is unavailable (you'll see a warning note above), explicitly mention this in the 'Repository Context' section: '⚠️ Note: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only.'",
             "- If repository file structure is available, analyze it to provide accurate technology stack and project context",
             "- If repository file structure is NOT available, infer technology stack from Jira issue description and repository name/context",
+            "- If repository is not available, indicate 'Repository: N/A' in the Repository Context section",
             "- Do NOT include code examples or implementation details",
         ])
         
