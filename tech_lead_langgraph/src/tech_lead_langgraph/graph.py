@@ -416,11 +416,13 @@ def synthesize_output(state: AgentState) -> AgentState:
         if project_key:
             repo_context_parts.append(f"- Project Key: {project_key}")
         
-        # Track MCP availability for transparency
+        # Track MCP availability - only show warning if we actually tried to use it and it failed
+        # If workspace/repo_slug exist but repo_files/repo_list are None, it means MCP tools were called but failed
         bitbucket_mcp_available = repo_files is not None and repo_list is not None
         mcp_status_note = ""
-        if not bitbucket_mcp_available:
-            mcp_status_note = "\n⚠️ NOTE: Bitbucket MCP server is currently unavailable. Repository file structure and detailed repository information could not be retrieved. The analysis is based on Jira issue data and extracted repository metadata only."
+        # Only show warning if we have workspace/repo info (meaning we tried) but tools failed
+        if (workspace or repo_slug) and not bitbucket_mcp_available:
+            mcp_status_note = "\n⚠️ NOTE: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only."
         
         # Extract repository structure info - handle any repository name dynamically
         repo_structure = ""
@@ -487,9 +489,7 @@ def synthesize_output(state: AgentState) -> AgentState:
             import json
             prompt_parts.append("\nRepository file structure:")
             prompt_parts.append(json.dumps(repo_files, indent=2)[:2000])  # Limit size
-        elif workspace or repo_slug:
-            # If we have workspace/repo info but no file structure, mention it
-            prompt_parts.append("\n⚠️ Repository file structure could not be retrieved (Bitbucket MCP unavailable).")
+        # Note: MCP unavailability warning is already handled in mcp_status_note above
         
         prompt_parts.extend([
             "",

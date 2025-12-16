@@ -121,20 +121,21 @@ class TechLeadCrew():
         jira_mcp = None
         bitbucket_mcp = None
         
-        # Try to create MCP server instances without connecting
-        # They will connect when tools are actually called
+        # Try to create MCP server instances
+        # Note: MCPServerAdapter connects immediately and may timeout, but tools might still work when called
         if MCPServerAdapter:
             # Strategy 1: Use MCPServerAdapter (newer API, preferred)
             logger.info("Creating MCPServerAdapter instances")
             try:
                 # MCPServerAdapter connects immediately, so we need to handle connection errors
-                # Try to create adapters - they will attempt to connect
+                # Even if initialization times out, the tools might work when actually called
                 jira_mcp = MCPServerAdapter(
                     serverparams={"url": jira_url}
                 )
                 logger.info("✅ Created Jira MCPServerAdapter")
             except Exception as jira_error:
-                logger.warning(f"Jira MCPServerAdapter creation failed: {jira_error}")
+                logger.warning(f"⚠️  Jira MCPServerAdapter initialization failed: {jira_error}")
+                logger.info("   Note: Tools may still work when called (lazy connection)")
                 jira_mcp = None
             
             try:
@@ -143,7 +144,10 @@ class TechLeadCrew():
                 )
                 logger.info("✅ Created Bitbucket MCPServerAdapter")
             except Exception as bitbucket_error:
-                logger.warning(f"Bitbucket MCPServerAdapter creation failed: {bitbucket_error}")
+                logger.warning(f"⚠️  Bitbucket MCPServerAdapter initialization failed: {bitbucket_error}")
+                logger.info("   Note: Tools may still work when called (lazy connection)")
+                logger.info(f"   Endpoint URL: {bitbucket_url}")
+                logger.info("   Tip: Check if endpoint is reachable and accepts SSE connections")
                 bitbucket_mcp = None
             
             # If both failed, try fallback
@@ -151,24 +155,36 @@ class TechLeadCrew():
                 logger.info("Both MCPServerAdapter instances failed, falling back to MCPServerHTTP")
         
         # Strategy 2: Fallback to MCPServerHTTP if MCPServerAdapter failed or not available
+        # MCPServerHTTP uses lazy connection, so it won't timeout during initialization
         if (not jira_mcp or not bitbucket_mcp) and MCPServerHTTP:
-            logger.info("Attempting to use MCPServerHTTP (fallback)")
+            logger.info("Attempting to use MCPServerHTTP (fallback - lazy connection)")
             try:
                 import inspect
                 sig = inspect.signature(MCPServerHTTP.__init__)
                 if 'url' in sig.parameters:
-                    # Create without connecting - should be lazy
-                    jira_mcp = MCPServerHTTP(
-                        url=jira_url,
-                        streamable=True,
-                        cache_tools_list=True,
-                    )
-                    bitbucket_mcp = MCPServerHTTP(
-                        url=bitbucket_url,
-                        streamable=True,
-                        cache_tools_list=True,
-                    )
-                    logger.info("✅ Created MCPServerHTTP instances (will connect when tools are used)")
+                    # Create without connecting - should be lazy (connects when tools are called)
+                    if not jira_mcp:
+                        try:
+                            jira_mcp = MCPServerHTTP(
+                                url=jira_url,
+                                streamable=True,
+                                cache_tools_list=True,
+                            )
+                            logger.info("✅ Created Jira MCPServerHTTP (lazy connection)")
+                        except Exception as e:
+                            logger.warning(f"⚠️  Jira MCPServerHTTP creation failed: {e}")
+                    
+                    if not bitbucket_mcp:
+                        try:
+                            bitbucket_mcp = MCPServerHTTP(
+                                url=bitbucket_url,
+                                streamable=True,
+                                cache_tools_list=True,
+                            )
+                            logger.info("✅ Created Bitbucket MCPServerHTTP (lazy connection)")
+                            logger.info(f"   Endpoint: {bitbucket_url}")
+                        except Exception as e:
+                            logger.warning(f"⚠️  Bitbucket MCPServerHTTP creation failed: {e}")
                 else:
                     raise AttributeError("MCPServerHTTP doesn't support 'url' parameter")
             except Exception as http_api_error:
@@ -188,19 +204,29 @@ class TechLeadCrew():
             jira_mcp = None
             bitbucket_mcp = None
         
-        # Only include MCP servers if they were successfully created
+        # Include MCP servers even if initialization had warnings
+        # The tools might work when actually called (lazy connection)
         mcp_list = []
         if jira_mcp:
             mcp_list.append(jira_mcp)
+            logger.info("✅ Jira MCP will be available to agent")
+        else:
+            logger.warning("⚠️  Jira MCP not available - agent will work without Jira tools")
+        
         if bitbucket_mcp:
             mcp_list.append(bitbucket_mcp)
+            logger.info("✅ Bitbucket MCP will be available to agent")
+        else:
+            logger.warning("⚠️  Bitbucket MCP not available - agent will work without Bitbucket tools")
         
         if not mcp_list:
             logger.warning("⚠️  No MCP servers available - agent will work without MCP tools")
+        else:
+            logger.info(f"✅ {len(mcp_list)} MCP server(s) configured - tools will be available to agent")
         
         return Agent(
             config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
-            verbose=True,
+            verbose=False,  # Disable verbose to prevent showing task descriptions to users
             llm=llm,
             mcps=mcp_list if mcp_list else None,  # Pass None or empty list if no MCPs
         )
@@ -222,6 +248,6 @@ class TechLeadCrew():
             agents=[self.tech_lead_crew()],  # Single agent
             tasks=[self.analyze_and_extract()],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,  # Disable verbose to prevent showing task descriptions to users
             output_log_file=False,  # Disable file logging; show output on console only
         )
