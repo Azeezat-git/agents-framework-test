@@ -117,7 +117,7 @@ if __name__ == "__main__":
     
     # Test with a sample Jira issue
     test_input = {
-        "jira_issue_key": "TECBAC-131"  # Replace with a real issue key
+        "jira_issue_key": "TECBAC-131"  # Test issue
     }
     
     print(f"\nRunning crew with input: {test_input}")

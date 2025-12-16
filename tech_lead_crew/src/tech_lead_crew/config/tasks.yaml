@@ -1,12 +1,77 @@
 analyze_and_extract:
   description: >
-    🔍 Analyzing Jira issue and extracting requirements in one pass. Use the input "jira_issue_key" (e.g., "TECBAC-209").
+    🔍 Analyzing Jira issue and extracting requirements in one pass. 
+    
+    The issue key is provided in the input: {jira_issue_key}
+    
+    Call the jira_get_issue tool exactly once with issue_key="{jira_issue_key}". If it fails, report the failure and stop; do NOT retry.
 
-    Call the jira_get_issue tool exactly once. If it fails, report the failure and stop; do NOT retry.
+    ⚠️ CRITICAL: You MUST use the EXACT data from the jira_get_issue tool response. 
+    
+    MANDATORY WORKFLOW:
+    1. Call jira_get_issue tool with the issue key
+    2. The tool will return a response - this response contains the ACTUAL issue data
+    3. The response may be:
+       - A JSON object with "summary" and "description" fields
+       - A JSON string that needs to be parsed (if string, parse it first)
+       - A dictionary/object with nested structure
+    4. Extract the "summary" field - this is the EXACT issue title (copy it COMPLETELY)
+    5. Extract the "description" field - this is the EXACT issue description (copy it COMPLETELY)
+    6. In your Issue Summary, write:
+       - "**Title:** " followed by the EXACT COMPLETE value from response["summary"]
+       - "**Description:** " followed by the EXACT COMPLETE value from response["description"]
+    
+    CRITICAL: Do NOT write your Issue Summary until you have:
+    - Called the jira_get_issue tool
+    - Extracted the "summary" field from the tool response
+    - Extracted the "description" field from the tool response
+    - Confirmed you have these exact values
+    
+    Then use ONLY those extracted values - do not infer, guess, or make up content.
+    
+    CRITICAL RULES:
+    - The title MUST be the EXACT COMPLETE string from tool response["summary"] - copy ALL characters, don't truncate
+    - The description MUST be the EXACT COMPLETE string from tool response["description"] - copy ALL characters
+    - DO NOT shorten, truncate, or summarize the title/description
+    - DO NOT look at repository structure and infer what the issue should be
+    - DO NOT write titles like "Create a sample REST API endpoint" unless that's EXACTLY what's in tool response["summary"]
+    - DO NOT write titles like "Create a React application" unless that's EXACTLY what's in tool response["summary"]
+    - If tool response["summary"] is "[MVP][Agent] Implement category filter on the homepage", write EXACTLY that (don't drop "on the homepage")
+    - Whatever the tool response["summary"] says, copy it COMPLETELY and EXACTLY
+    
+    VALIDATION CHECK: Before finalizing your response, ask yourself:
+    "Does the title I wrote match EXACTLY what's in tool response['summary']?"
+    If NO, STOP and use the tool response["summary"] value instead.
+    
+    VALIDATION STEP (REQUIRED):
+    After calling jira_get_issue, before writing your response, you MUST:
+    1. Look at the tool response you received
+    2. Identify the "summary" field value - write it down mentally or note it
+    3. Identify the "description" field value - write it down mentally or note it
+    4. ONLY THEN write your Issue Summary using those EXACT values
+    
+    FORMAT REQUIREMENT: In your Issue Summary, you MUST format it like this:
+    ```
+    # Issue Summary
+    
+    **Issue Key:** [issue key from input]
+    **Title:** [EXACT COMPLETE VALUE FROM tool response["summary"] - copy ALL characters, no truncation]
+    **Description:** [EXACT COMPLETE VALUE FROM tool response["description"] - copy ALL characters, no truncation]
+    ```
+    
+    Do NOT write any other title. The title MUST come from tool response["summary"].
+    If you cannot find the tool response or it's empty, report that the tool failed - do NOT make up a title.
+    
+    ⚠️ FINAL VALIDATION: 
+    Before you write your final response, you MUST be able to answer this question:
+    "What is the exact value of tool response['summary']?"
+    If you cannot answer this question, you have not properly extracted the tool response.
+    Once you can answer it, use that EXACT value (and ONLY that value) for the title.
+    Do NOT use any other value, even if it seems more logical based on repository structure.
 
-    From the Jira response, extract:
-    - Issue key and title
-    - Description and acceptance criteria
+    From the Jira tool response, extract:
+    - Issue key and title (use the EXACT "summary" field from tool response)
+    - Description and acceptance criteria (use the EXACT "description" field from tool response)
     - Repository location (if specified in task description or links)
     - Project information and project key
     - Constraints, dependencies, or specifications
@@ -29,6 +94,14 @@ analyze_and_extract:
     - Repository Context: Project type and basic structure (if repository was analyzed). If Bitbucket MCP was unavailable, explicitly state this limitation.
 
     Do NOT include implementation details or code-level guidance. Focus on WHAT, not HOW.
+    
   expected_output: >
-    A combined issue summary and requirements extraction with the fields listed above, with no additional tool calls beyond the single jira_get_issue invocation.
+    A combined issue summary and requirements extraction with the fields listed above, with no additional tool calls beyond the single jira_get_issue invocation. 
+    
+    CRITICAL VALIDATION: 
+    - The "Title" field MUST be tool response["summary"] copied EXACTLY (character-for-character)
+    - The "Description" field MUST be tool response["description"] copied EXACTLY (character-for-character)
+    - If you wrote a title that doesn't match tool response["summary"], your output is WRONG - fix it
+    - Do NOT infer titles from repository structure - ONLY use tool response data
+    - The tool response is the SOURCE OF TRUTH - ignore everything else when writing title/description
   agent: tech_lead_crew

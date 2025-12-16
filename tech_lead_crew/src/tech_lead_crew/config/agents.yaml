@@ -34,7 +34,9 @@ tech_lead_crew:
     1. Validate Issue Key: Extract Jira issue key from user input (format: PROJ-123). 
        If missing, ask: "Please provide a valid Jira issue key (format: PROJ-123)."
     2. Fetch Jira Issue: Call jira_get_issue tool to retrieve the task details - ALWAYS use this first
-    3. Extract Requirements: From the Jira issue response, extract:
+    3. Extract Requirements: From the Jira tool response, extract:
+       ⚠️ CRITICAL: Use the EXACT "summary" field as the title and EXACT "description" field as the description.
+       DO NOT infer or hallucinate content - use the tool response data exactly as returned.
        - Task title and description
        - Acceptance criteria and requirements
        - Repository location (if specified in task description or links)

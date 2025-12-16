@@ -5,31 +5,16 @@ from typing import List
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
-# Try to import MCPServerAdapter first (newer API), then fallback to MCPServerHTTP
-# Note: Don't use logger here as it's not defined yet - will log later when used
+# Import MCPServerAdapter for explicit tool loading
 MCPServerAdapter = None
-MCPServerHTTP = None
-
 try:
     from crewai_tools.adapters.mcp_adapter import MCPServerAdapter
 except ImportError:
     try:
         from crewai_tools import MCPServerAdapter
     except ImportError:
-        try:
-            from crewai.mcp import MCPServerHTTP
-        except ImportError:
-            try:
-                from crewai_tools.mcp import MCPServerHTTP
-            except ImportError:
-                try:
-                    from crewai import MCPServerHTTP
-                except ImportError:
-                    raise ImportError(
-                        "Neither MCPServerAdapter nor MCPServerHTTP found. "
-                        "Please ensure crewai-tools[mcp] is installed. "
-                        "Try: pip install 'crewai-tools[mcp]>=0.10.0'"
-                    )
+        MCPServerAdapter = None
+
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
@@ -46,6 +31,10 @@ class TechLeadCrew():
 
     agents: List[BaseAgent]
     tasks: List[Task]
+
+    # MCP server configuration for CrewBase's get_mcp_tools() method
+    # This uses lazy connection and proper lifecycle management
+    mcp_server_params = None  # Will be set in agent method
 
     def _build_llm(self):
         gateway_base_url = os.getenv(
@@ -71,6 +60,7 @@ class TechLeadCrew():
         # So even though we use "gpt-3.5-turbo", the gateway will still route to Bedrock
         # because the base_url points to /llm/bedrock/default
         # The model name is just metadata for LiteLLM validation - it doesn't affect routing
+        # Both CrewAI and LangGraph use the same gateway endpoint, so they get the same model
         custom_model = "gpt-3.5-turbo"
         
         class ModelLoggingHandler(BaseCallbackHandler):
@@ -95,12 +85,12 @@ class TechLeadCrew():
             callbacks=[ModelLoggingHandler()],
         )
         return llm
-        
+
     @agent
     def tech_lead_crew(self) -> Agent:
         """Tech Lead agent that uses Jira MCP over HTTP and Bedrock via gateway"""
         llm = self._build_llm()
-        # Build MCP server instances - handle both MCPServerHTTP and MCPServerAdapter APIs
+        
         jira_url = os.getenv("JIRA_MCP_URL")
         if not jira_url:
             raise ValueError(
@@ -116,120 +106,43 @@ class TechLeadCrew():
                 "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
             )
         
-        # Initialize MCP servers - create them but don't connect yet (lazy connection)
-        # This allows the agent to start even if MCP servers are temporarily unavailable
-        jira_mcp = None
-        bitbucket_mcp = None
+        # Remove trailing slashes - they can cause issues with URL parsing
+        jira_url = jira_url.rstrip('/')
+        bitbucket_url = bitbucket_url.rstrip('/')
         
-        # Try to create MCP server instances
-        # Note: MCPServerAdapter connects immediately and may timeout, but tools might still work when called
-        if MCPServerAdapter:
-            # Strategy 1: Use MCPServerAdapter (newer API, preferred)
-            logger.info("Creating MCPServerAdapter instances")
-            try:
-                # MCPServerAdapter connects immediately, so we need to handle connection errors
-                # Even if initialization times out, the tools might work when actually called
-                jira_mcp = MCPServerAdapter(
-                    serverparams={"url": jira_url}
-                )
-                logger.info("✅ Created Jira MCPServerAdapter")
-            except Exception as jira_error:
-                logger.warning(f"⚠️  Jira MCPServerAdapter initialization failed: {jira_error}")
-                logger.info("   Note: Tools may still work when called (lazy connection)")
-                jira_mcp = None
-            
-            try:
-                bitbucket_mcp = MCPServerAdapter(
-                    serverparams={"url": bitbucket_url}
-                )
-                logger.info("✅ Created Bitbucket MCPServerAdapter")
-            except Exception as bitbucket_error:
-                logger.warning(f"⚠️  Bitbucket MCPServerAdapter initialization failed: {bitbucket_error}")
-                logger.info("   Note: Tools may still work when called (lazy connection)")
-                logger.info(f"   Endpoint URL: {bitbucket_url}")
-                logger.info("   Tip: Check if endpoint is reachable and accepts SSE connections")
-                bitbucket_mcp = None
-            
-            # If both failed, try fallback
-            if not jira_mcp and not bitbucket_mcp and MCPServerHTTP:
-                logger.info("Both MCPServerAdapter instances failed, falling back to MCPServerHTTP")
+        # Configure MCP server params for CrewBase's get_mcp_tools() method
+        # This provides proper lifecycle management and lazy connection
+        self.mcp_server_params = [
+            {
+                "url": jira_url,
+                "transport": "streamable-http"
+            },
+            {
+                "url": bitbucket_url,
+                "transport": "streamable-http"
+            }
+        ]
         
-        # Strategy 2: Fallback to MCPServerHTTP if MCPServerAdapter failed or not available
-        # MCPServerHTTP uses lazy connection, so it won't timeout during initialization
-        if (not jira_mcp or not bitbucket_mcp) and MCPServerHTTP:
-            logger.info("Attempting to use MCPServerHTTP (fallback - lazy connection)")
-            try:
-                import inspect
-                sig = inspect.signature(MCPServerHTTP.__init__)
-                if 'url' in sig.parameters:
-                    # Create without connecting - should be lazy (connects when tools are called)
-                    if not jira_mcp:
-                        try:
-                            jira_mcp = MCPServerHTTP(
-                                url=jira_url,
-                                streamable=True,
-                                cache_tools_list=True,
-                            )
-                            logger.info("✅ Created Jira MCPServerHTTP (lazy connection)")
-                        except Exception as e:
-                            logger.warning(f"⚠️  Jira MCPServerHTTP creation failed: {e}")
-                    
-                    if not bitbucket_mcp:
-                        try:
-                            bitbucket_mcp = MCPServerHTTP(
-                                url=bitbucket_url,
-                                streamable=True,
-                                cache_tools_list=True,
-                            )
-                            logger.info("✅ Created Bitbucket MCPServerHTTP (lazy connection)")
-                            logger.info(f"   Endpoint: {bitbucket_url}")
-                        except Exception as e:
-                            logger.warning(f"⚠️  Bitbucket MCPServerHTTP creation failed: {e}")
-                else:
-                    raise AttributeError("MCPServerHTTP doesn't support 'url' parameter")
-            except Exception as http_api_error:
-                logger.warning(f"MCPServerHTTP creation failed: {http_api_error}")
-                logger.warning("⚠️  Agent will start without MCP tools - they may fail when called")
+        logger.info("Configuring MCP servers for CrewBase")
+        logger.info(f"✅ Jira MCP URL: {jira_url}")
+        logger.info(f"✅ Bitbucket MCP URL: {bitbucket_url}")
         
-        # Don't fail if MCP creation fails - agent can still start
-        # MCP tools will fail when called, but that's better than crashing on startup
-        if not jira_mcp or not bitbucket_mcp:
-            logger.warning(
-                "⚠️  Could not create MCP server instances. "
-                "Agent will start but MCP tools will not be available. "
-                f"MCPServerAdapter available: {MCPServerAdapter is not None}, "
-                f"MCPServerHTTP available: {MCPServerHTTP is not None}"
-            )
-            # Create empty list instead of failing
-            jira_mcp = None
-            bitbucket_mcp = None
+        # Get MCP tools using CrewBase's method (handles lifecycle properly)
+        mcp_tools = self.get_mcp_tools()
+        logger.info(f"✅ Loaded {len(mcp_tools)} MCP tool(s) via get_mcp_tools()")
+        if mcp_tools:
+            tool_names = [t.name if hasattr(t, 'name') else str(t) for t in mcp_tools[:5]]
+            logger.info(f"   Tools: {tool_names}")
         
-        # Include MCP servers even if initialization had warnings
-        # The tools might work when actually called (lazy connection)
-        mcp_list = []
-        if jira_mcp:
-            mcp_list.append(jira_mcp)
-            logger.info("✅ Jira MCP will be available to agent")
-        else:
-            logger.warning("⚠️  Jira MCP not available - agent will work without Jira tools")
-        
-        if bitbucket_mcp:
-            mcp_list.append(bitbucket_mcp)
-            logger.info("✅ Bitbucket MCP will be available to agent")
-        else:
-            logger.warning("⚠️  Bitbucket MCP not available - agent will work without Bitbucket tools")
-        
-        if not mcp_list:
-            logger.warning("⚠️  No MCP servers available - agent will work without MCP tools")
-        else:
-            logger.info(f"✅ {len(mcp_list)} MCP server(s) configured - tools will be available to agent")
-        
-        return Agent(
+        # Create agent with MCP tools
+        agent = Agent(
             config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
-            verbose=False,  # Disable verbose to prevent showing task descriptions to users
+            verbose=True,  # Enable verbose to see tool calls and responses
             llm=llm,
-            mcps=mcp_list if mcp_list else None,  # Pass None or empty list if no MCPs
+            tools=mcp_tools,  # Pass explicitly loaded MCP tools
         )
+        
+        return agent
 
     @task
     def analyze_and_extract(self) -> Task:
