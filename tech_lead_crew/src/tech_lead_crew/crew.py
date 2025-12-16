@@ -111,7 +111,7 @@ class TechLeadCrew():
         bitbucket_url = bitbucket_url.rstrip('/')
         
         # Configure MCP server params for CrewBase's get_mcp_tools() method
-        # This provides proper lifecycle management and lazy connection
+        # Add connection timeout to prevent hanging during initialization
         self.mcp_server_params = [
             {
                 "url": jira_url,
@@ -123,41 +123,58 @@ class TechLeadCrew():
             }
         ]
         
+        # Set connection timeout for MCP servers (CrewBase attribute)
+        # This prevents the agent from hanging if MCP servers are temporarily unavailable
+        self.mcp_connect_timeout = 10  # 10 seconds timeout
+        
         logger.info("Configuring MCP servers for CrewBase")
         logger.info(f"✅ Jira MCP URL: {jira_url}")
         logger.info(f"✅ Bitbucket MCP URL: {bitbucket_url}")
+        logger.info(f"✅ MCP connection timeout: {self.mcp_connect_timeout}s")
         
-        # Try to get MCP tools using CrewBase's method (handles lifecycle properly)
-        # If connection fails during initialization, fall back to string URLs (lazy connection)
+        # Get MCP tools using CrewBase's method (handles lifecycle properly)
+        # Add retry logic with exponential backoff for cluster startup scenarios
+        # MCP servers might not be ready immediately when the pod starts
         mcp_tools = []
-        try:
-            mcp_tools = self.get_mcp_tools()
-            logger.info(f"✅ Loaded {len(mcp_tools)} MCP tool(s) via get_mcp_tools()")
-            if mcp_tools:
-                tool_names = [t.name if hasattr(t, 'name') else str(t) for t in mcp_tools[:5]]
-                logger.info(f"   Tools: {tool_names}")
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to load MCP tools via get_mcp_tools(): {e}")
-            logger.info("   Falling back to string URLs (lazy connection)")
-            mcp_tools = []  # Will use string URLs instead
+        max_retries = 3
+        retry_delay = 2  # seconds
         
-        # Create agent with MCP tools or string URLs
-        agent_kwargs = {
-            "config": self.agents_config['tech_lead_crew'],  # type: ignore[index]
-            "verbose": True,  # Enable verbose to see tool calls and responses
-            "llm": llm,
-        }
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to load MCP tools (attempt {attempt + 1}/{max_retries})...")
+                mcp_tools = self.get_mcp_tools()
+                logger.info(f"✅ Loaded {len(mcp_tools)} MCP tool(s) via get_mcp_tools()")
+                if mcp_tools:
+                    tool_names = [t.name if hasattr(t, 'name') else str(t) for t in mcp_tools[:5]]
+                    logger.info(f"   Tools: {tool_names}")
+                break  # Success, exit retry loop
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(
+                        f"⚠️  Failed to load MCP tools (attempt {attempt + 1}/{max_retries}): {e}"
+                    )
+                    logger.info(f"   Retrying in {wait_time} seconds...")
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    # Final attempt failed
+                    logger.error(f"❌ Failed to load MCP tools after {max_retries} attempts: {e}")
+                    logger.error("   This will cause the agent to fail - MCP tools are required!")
+                    # Re-raise the exception - we need tools to work, can't proceed without them
+                    raise RuntimeError(
+                        f"Failed to initialize MCP tools after {max_retries} retries. "
+                        f"This is required for the agent to function. "
+                        f"Last error: {e}. Please check MCP server connectivity and readiness."
+                    ) from e
         
-        if mcp_tools:
-            # Use explicitly loaded tools
-            agent_kwargs["tools"] = mcp_tools
-            logger.info("   Using explicitly loaded MCP tools")
-        else:
-            # Fall back to string URLs (lazy connection)
-            agent_kwargs["mcps"] = [jira_url, bitbucket_url]
-            logger.info("   Using string URLs for lazy MCP tool loading")
-        
-        agent = Agent(**agent_kwargs)
+        # Create agent with explicitly loaded MCP tools (required for functionality)
+        agent = Agent(
+            config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
+            verbose=True,  # Enable verbose to see tool calls and responses
+            llm=llm,
+            tools=mcp_tools,  # MCP tools are required - no fallback
+        )
         
         return agent
 
