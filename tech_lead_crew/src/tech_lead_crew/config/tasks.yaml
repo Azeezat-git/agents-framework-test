@@ -92,6 +92,7 @@ analyze_and_extract:
     - If MCP tools work successfully, identify project type (frontend, backend, infrastructure, etc.) from repository structure
     - If MCP tools fail, infer project type from Jira issue description and repository name/context
     - Focus on structure and type, NOT code patterns or implementation details
+    - IMPORTANT: When analyzing repository structure, identify and list key files present (e.g., next.config.ts, tsconfig.json, package.json, src/app/, Dockerfile, requirements.txt, etc.) in the Repository Context section. This helps developers understand the project structure.
 
     Then produce:
     - Deliverables (WHAT to create/modify)
@@ -99,7 +100,7 @@ analyze_and_extract:
     - Input/Output specifications
     - Constraints and validations
     - Integration requirements (external systems/APIs/components)
-    - Repository Context: Project type and basic structure (if repository was analyzed). If Bitbucket MCP was unavailable, explicitly state this limitation.
+    - Repository Context: Project type and basic structure (if repository was analyzed). Include a "Key Files Present" section listing important configuration and source files (e.g., next.config.ts, tsconfig.json, package.json, src/app/, Dockerfile, requirements.txt, etc.) that help developers understand the project structure. If Bitbucket MCP was unavailable, explicitly state this limitation.
 
     Do NOT include implementation details or code-level guidance. Focus on WHAT, not HOW.
     

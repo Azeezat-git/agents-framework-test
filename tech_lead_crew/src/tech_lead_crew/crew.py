@@ -167,7 +167,7 @@ class TechLeadCrew():
         # Create agent with explicitly loaded MCP tools (required for functionality)
         agent = Agent(
             config=self.agents_config['tech_lead_crew'],  # type: ignore[index]
-            verbose=True,  # Enable verbose to see tool calls and responses
+            verbose=False,  # Disable verbose to prevent showing task descriptions to users
             llm=llm,
             tools=mcp_tools,  # MCP tools are required - no fallback
         )
