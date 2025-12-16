@@ -106,10 +106,6 @@ class TechLeadCrew():
                 "http://agentgateway-enterprise.core-gloogateway.svc.cluster.local:8080/mcp/core/bitbucket-mcp/"
             )
         
-        # Remove trailing slashes - they can cause issues with URL parsing
-        jira_url = jira_url.rstrip('/')
-        bitbucket_url = bitbucket_url.rstrip('/')
-        
         # Configure MCP server params for CrewBase's get_mcp_tools() method
         # Add connection timeout to prevent hanging during initialization
         self.mcp_server_params = [
