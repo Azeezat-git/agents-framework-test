@@ -416,12 +416,18 @@ def synthesize_output(state: AgentState) -> AgentState:
         if project_key:
             repo_context_parts.append(f"- Project Key: {project_key}")
         
-        # Track MCP availability - only show warning if we actually tried to use it and it failed
-        # If workspace/repo_slug exist but repo_files/repo_list are None, it means MCP tools were called but failed
+        # Track repository availability
+        # If no workspace/repo_slug, repository is not available in the issue (don't mention MCP)
+        # If workspace/repo_slug exist but repo_files/repo_list are None, MCP tools were called but failed
+        has_repo_in_issue = workspace or repo_slug
         bitbucket_mcp_available = repo_files is not None and repo_list is not None
         mcp_status_note = ""
-        # Only show warning if we have workspace/repo info (meaning we tried) but tools failed
-        if (workspace or repo_slug) and not bitbucket_mcp_available:
+        
+        if not has_repo_in_issue:
+            # No repository mentioned in issue - just state that, don't mention MCP
+            mcp_status_note = "\n⚠️ Note: Repository not available in issue. Analysis is based on Jira issue data only."
+        elif not bitbucket_mcp_available:
+            # Repository was mentioned but MCP tools failed
             mcp_status_note = "\n⚠️ NOTE: Bitbucket MCP server was unavailable during analysis. Repository file structure could not be retrieved. Analysis is based on Jira issue data and extracted repository metadata only."
         
         # Extract repository structure info - handle any repository name dynamically
