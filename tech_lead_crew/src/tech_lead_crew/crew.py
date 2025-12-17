@@ -47,32 +47,56 @@ class EventLoopSafeCrew:
         
         This is called before both sync and async kickoff to prevent
         "Event loop is closed" errors on back-to-back requests.
+        
+        CRITICAL: We must clear the cached MCP adapter to force recreation
+        with a fresh event loop context.
         """
         try:
-            # Check if we're in an async context
-            try:
-                loop = asyncio.get_running_loop()
-                # We're in an async context, loop should be available
-                logger.debug("Running in async context, event loop available")
-            except RuntimeError:
-                # Not in async context, check if we can get/create a loop
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_closed():
-                        logger.warning("Event loop is closed, will create new one when needed")
-                        # Don't create loop here - let it be created when tools are called
-                except RuntimeError:
-                    # No event loop in current thread
-                    logger.debug("No event loop in current thread, will be created when needed")
+            # CRITICAL FIX: Clear the cached MCP adapter to force recreation
+            # CrewBase caches the MCP adapter in _mcp_server_adapter
+            # We need to clear this cache so get_mcp_tools() creates a fresh adapter
+            # The adapter runs in a background thread with its own event loop
+            # When that loop closes, tools fail - we need a fresh adapter with fresh loop
+            # CRITICAL: Clear the cached MCP adapter to force recreation
+            # CrewBase caches the MCP adapter in _mcp_server_adapter
+            # We need to clear this cache so get_mcp_tools() creates a fresh adapter
+            # The adapter runs in a background thread with its own event loop
+            # When that loop closes, tools fail - we need a fresh adapter with fresh loop
+            # NOTE: We don't actively stop the old adapter - just clear the cache
+            # The old adapter will be garbage collected, and get_mcp_tools() will create a new one
+            if hasattr(self._crew_base, '_mcp_server_adapter'):
+                old_adapter = self._crew_base._mcp_server_adapter
+                if old_adapter is not None:
+                    logger.info("🔄 Clearing cached MCP adapter to force fresh adapter creation...")
+                    # Just clear the cache - don't stop the old adapter (it might still be in use)
+                    # Python's garbage collector will handle cleanup when it's no longer referenced
+                    self._crew_base._mcp_server_adapter = None
+                    logger.info("✅ Cleared cached MCP adapter - will create fresh adapter with new event loop")
             
             # Refresh MCP tools using the crew base instance
             # This creates fresh tool instances with current event loop context
             if hasattr(self._crew_base, 'mcp_server_params') and self._crew_base.mcp_server_params:
-                logger.debug("Refreshing MCP tools before kickoff to ensure fresh event loop context...")
+                logger.info("🔄 Refreshing MCP tools before kickoff to ensure fresh event loop context...")
                 try:
-                    # Get fresh MCP tools - this will use the current event loop context
+                    # Store old tool IDs for comparison
+                    old_tool_ids = []
+                    for agent in self._crew.agents:
+                        if hasattr(agent, 'tools') and agent.tools:
+                            old_tool_ids.extend([id(tool) for tool in agent.tools])
+                    
+                    # Get fresh MCP tools - this will create a new adapter with current event loop
                     fresh_tools = self._crew_base.get_mcp_tools()
-                    logger.debug(f"Refreshed {len(fresh_tools)} MCP tool(s)")
+                    fresh_tool_ids = [id(tool) for tool in fresh_tools]
+                    
+                    # Verify we got NEW tool instances (different IDs)
+                    if old_tool_ids and fresh_tool_ids:
+                        if set(old_tool_ids) == set(fresh_tool_ids):
+                            logger.warning("⚠️  Tool refresh returned same tool instances (same IDs)")
+                            logger.warning("   This might indicate caching - tools may still have old event loop")
+                        else:
+                            logger.info(f"✅ Got NEW tool instances (IDs changed)")
+                    
+                    logger.info(f"✅ Refreshed {len(fresh_tools)} MCP tool(s) with fresh event loop context")
                     
                     # Update tools for each agent
                     for agent in self._crew.agents:
@@ -81,22 +105,29 @@ class EventLoopSafeCrew:
                             agent.tools = fresh_tools
                             logger.debug(f"Updated tools for agent: {agent.role}")
                 except Exception as e:
-                    logger.warning(f"Failed to refresh MCP tools: {e}. Using existing tools.")
+                    logger.error(f"❌ Failed to refresh MCP tools: {e}")
+                    logger.exception(e)
                     # Don't fail the request if tool refresh fails - use existing tools
+                    # But log the error so we know what happened
             else:
                 logger.debug("No MCP server params configured, skipping tool refresh")
         except Exception as e:
-            logger.warning(f"Error refreshing agent tools: {e}. Continuing with existing tools.")
+            logger.error(f"❌ Error refreshing agent tools: {e}")
+            logger.exception(e)
+            # Continue with existing tools rather than failing the request
     
     def kickoff(self, inputs: Optional[Dict[str, Any]] = None, **kwargs):
         """Wrapper for kickoff that refreshes tools before execution."""
+        logger.info("🔄 Refreshing MCP tools before sync kickoff...")
         self._refresh_agent_tools()
         return self._crew.kickoff(inputs=inputs, **kwargs)
     
-    def kickoff_async(self, inputs: Optional[Dict[str, Any]] = None, **kwargs):
+    async def kickoff_async(self, inputs: Optional[Dict[str, Any]] = None, **kwargs):
         """Wrapper for kickoff_async that refreshes tools before execution."""
+        logger.info("🔄 Refreshing MCP tools before async kickoff...")
+        # For async, we're already in an async context, so refresh will use the current loop
         self._refresh_agent_tools()
-        return self._crew.kickoff_async(inputs=inputs, **kwargs)
+        return await self._crew.kickoff_async(inputs=inputs, **kwargs)
     
     def __getattr__(self, name):
         """Delegate all other attributes to the underlying crew."""
