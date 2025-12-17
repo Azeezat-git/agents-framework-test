@@ -1,6 +1,7 @@
 import os
 import logging
-from typing import List
+import asyncio
+from typing import List, Any, Dict, Optional
 
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -24,6 +25,82 @@ logger = logging.getLogger(__name__)
 
 # Keep LiteLLM tolerant to custom gateway params
 litellm.drop_params = True
+
+
+class EventLoopSafeCrew:
+    """
+    Wrapper around Crew that refreshes MCP tools before each kickoff to prevent
+    "Event loop is closed" errors on back-to-back requests.
+    
+    This ensures each request gets a fresh event loop context for MCP tools.
+    """
+    
+    def __init__(self, crew: Crew, crew_base_instance: 'TechLeadCrew'):
+        self._crew = crew
+        self._crew_base = crew_base_instance
+        self._original_agents = list(crew.agents) if hasattr(crew, 'agents') else []
+        
+    def _refresh_agent_tools(self):
+        """
+        Refresh MCP tools for all agents in the crew before each kickoff.
+        This ensures tools have a fresh event loop context.
+        
+        This is called before both sync and async kickoff to prevent
+        "Event loop is closed" errors on back-to-back requests.
+        """
+        try:
+            # Check if we're in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, loop should be available
+                logger.debug("Running in async context, event loop available")
+            except RuntimeError:
+                # Not in async context, check if we can get/create a loop
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        logger.warning("Event loop is closed, will create new one when needed")
+                        # Don't create loop here - let it be created when tools are called
+                except RuntimeError:
+                    # No event loop in current thread
+                    logger.debug("No event loop in current thread, will be created when needed")
+            
+            # Refresh MCP tools using the crew base instance
+            # This creates fresh tool instances with current event loop context
+            if hasattr(self._crew_base, 'mcp_server_params') and self._crew_base.mcp_server_params:
+                logger.debug("Refreshing MCP tools before kickoff to ensure fresh event loop context...")
+                try:
+                    # Get fresh MCP tools - this will use the current event loop context
+                    fresh_tools = self._crew_base.get_mcp_tools()
+                    logger.debug(f"Refreshed {len(fresh_tools)} MCP tool(s)")
+                    
+                    # Update tools for each agent
+                    for agent in self._crew.agents:
+                        if hasattr(agent, 'tools'):
+                            # Replace tools with fresh ones that have current event loop context
+                            agent.tools = fresh_tools
+                            logger.debug(f"Updated tools for agent: {agent.role}")
+                except Exception as e:
+                    logger.warning(f"Failed to refresh MCP tools: {e}. Using existing tools.")
+                    # Don't fail the request if tool refresh fails - use existing tools
+            else:
+                logger.debug("No MCP server params configured, skipping tool refresh")
+        except Exception as e:
+            logger.warning(f"Error refreshing agent tools: {e}. Continuing with existing tools.")
+    
+    def kickoff(self, inputs: Optional[Dict[str, Any]] = None, **kwargs):
+        """Wrapper for kickoff that refreshes tools before execution."""
+        self._refresh_agent_tools()
+        return self._crew.kickoff(inputs=inputs, **kwargs)
+    
+    def kickoff_async(self, inputs: Optional[Dict[str, Any]] = None, **kwargs):
+        """Wrapper for kickoff_async that refreshes tools before execution."""
+        self._refresh_agent_tools()
+        return self._crew.kickoff_async(inputs=inputs, **kwargs)
+    
+    def __getattr__(self, name):
+        """Delegate all other attributes to the underlying crew."""
+        return getattr(self._crew, name)
 
 @CrewBase
 class TechLeadCrew():
@@ -187,10 +264,14 @@ class TechLeadCrew():
         # To learn how to add knowledge sources to your crew, check out the documentation:
         # https://docs.crewai.com/concepts/knowledge#what-is-knowledge
 
-        return Crew(
+        base_crew = Crew(
             agents=[self.tech_lead_crew()],  # Single agent
             tasks=[self.analyze_and_extract()],
             process=Process.sequential,
             verbose=False,  # Disable verbose to prevent showing task descriptions to users
             output_log_file=False,  # Disable file logging; show output on console only
         )
+        
+        # Wrap the crew to refresh MCP tools before each kickoff
+        # This prevents "Event loop is closed" errors on back-to-back requests
+        return EventLoopSafeCrew(base_crew, self)
