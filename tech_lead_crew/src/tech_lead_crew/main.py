@@ -45,6 +45,46 @@ def setup_otel_instrumentation():
     
     if otel_endpoint or tracing_enabled:
         try:
+            # 0. Explicitly configure TracerProvider with OTLP exporter (required for reliable export)
+            from opentelemetry import trace
+            from opentelemetry.sdk.resources import Resource
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            
+            service_name = os.getenv("OTEL_SERVICE_NAME", "tech-lead-crew-agent")
+            resource = Resource.create({
+                "service.name": service_name,
+                "service.version": "0.2.9",
+                "agent.type": "BYO",
+                "agent.framework": "crewai",
+            })
+            
+            # Parse headers if provided
+            headers = {}
+            if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+                for item in os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(","):
+                    if "=" in item:
+                        k, v = item.split("=", 1)
+                        headers[k.strip()] = v.strip()
+            
+            # Use HTTP exporter for traces (port 4317 is HTTP)
+            # Only configure exporter if endpoint is set (otherwise rely on auto-config)
+            if otel_endpoint:
+                trace_exporter = OTLPSpanExporter(
+                    endpoint=f"{otel_endpoint}/v1/traces",
+                    headers=headers if headers else None
+                )
+                trace_provider = TracerProvider(resource=resource)
+                trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+                trace.set_tracer_provider(trace_provider)
+                logger.info(f"✅ OTEL trace provider configured with service name: {service_name}")
+            else:
+                # If no endpoint, just set resource (auto-config will handle exporter)
+                trace_provider = TracerProvider(resource=resource)
+                trace.set_tracer_provider(trace_provider)
+                logger.info(f"✅ OTEL trace provider configured (auto-config mode) with service name: {service_name}")
+            
             # 1. Setup CrewAI instrumentation (traces)
             from opentelemetry.instrumentation.crewai import CrewAIInstrumentor
             CrewAIInstrumentor().instrument()
