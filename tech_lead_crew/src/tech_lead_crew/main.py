@@ -68,7 +68,7 @@ def setup_otel_instrumentation():
                     from opentelemetry import metrics
                     from opentelemetry.sdk.metrics import MeterProvider
                     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-                    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+                    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
                     
                     # Parse headers if provided
                     headers = {}
@@ -78,13 +78,14 @@ def setup_otel_instrumentation():
                                 k, v = item.split("=", 1)
                                 headers[k.strip()] = v.strip()
                     
+                    # Use HTTP exporter (port 4317 is HTTP, not gRPC)
                     metric_exporter = OTLPMetricExporter(
                         endpoint=otel_endpoint,
                         headers=headers if headers else None
                     )
                     metric_reader = PeriodicExportingMetricReader(metric_exporter)
                     metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
-                    logger.info("✅ OTEL metrics export enabled")
+                    logger.info("✅ OTEL metrics export enabled (HTTP)")
                 except ImportError:
                     logger.warning("⚠️  OTEL metrics packages not installed - metrics export skipped")
                 except Exception as e:
@@ -150,6 +151,19 @@ def main():
 
     # 3. Build the FastAPI app and run the server
     server = app.build()
+    
+    # 3.5. Instrument FastAPI for HTTP route tracing
+    otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if otel_endpoint:
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+            FastAPIInstrumentor().instrument_app(server)
+            logger.info("✅ FastAPI instrumentation enabled - HTTP routes will be traced")
+        except ImportError:
+            logger.warning("⚠️  opentelemetry-instrumentation-fastapi not installed - HTTP routes won't be traced")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to enable FastAPI instrumentation: {e}")
+    
     port = int(os.getenv("PORT", "8080"))
     host = os.getenv("HOST", "0.0.0.0")
     logger.info(f"Starting server on {host}:{port}")

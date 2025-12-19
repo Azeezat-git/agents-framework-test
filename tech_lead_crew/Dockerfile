@@ -19,6 +19,8 @@ COPY src/tech_lead_crew/agent-card.json ./src/tech_lead_crew/
 COPY src/tech_lead_crew/config ./src/tech_lead_crew/config
 
 # Install Python dependencies using uv (much faster resolver)
+# Note: CrewAI has heavy dependencies (chromadb, onnxruntime, playwright, etc.)
+# which can make builds slower than LangGraph
 RUN uv pip install --system --no-cache .
 
 EXPOSE 8080

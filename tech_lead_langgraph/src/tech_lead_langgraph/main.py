@@ -22,7 +22,7 @@ def setup_otel_instrumentation():
     OTEL is the single source of telemetry; LangSmith is intentionally disabled.
 
     Environment variables:
-    - OTEL_EXPORTER_OTLP_ENDPOINT: Your OTEL collector endpoint (e.g., https://collector:4318)
+    - OTEL_EXPORTER_OTLP_ENDPOINT: Your OTEL collector endpoint (e.g., http://collector:4317)
     - OTEL_EXPORTER_OTLP_HEADERS: Auth headers if needed (e.g., "Authorization=Bearer TOKEN")
     - OTEL_SERVICE_NAME: Service name (defaults to tech-lead-langgraph)
     - OTEL_TRACES_EXPORTER: Set to 'otlp' to export traces
@@ -30,65 +30,69 @@ def setup_otel_instrumentation():
     - OTEL_METRICS_EXPORTER: Set to 'otlp' to export metrics
     """
     otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    if otel_endpoint:
-        try:
-            # 1. Setup LangChain/LangGraph instrumentation (traces)
-            from opentelemetry.instrumentation.langchain import LangchainInstrumentor
-            LangchainInstrumentor().instrument()
-            logger.info("✅ OTEL LangChain instrumentation enabled")
-            
-            # 2. Setup Python logging to OTEL (if enabled)
-            logs_exporter = os.getenv("OTEL_LOGS_EXPORTER", "").lower()
-            if logs_exporter == "otlp":
-                try:
-                    from opentelemetry.instrumentation.logging import LoggingInstrumentor
-                    LoggingInstrumentor().instrument(set_logging_format=True)
-                    logger.info("✅ OTEL logging export enabled")
-                except ImportError:
-                    logger.warning("⚠️  opentelemetry-instrumentation-logging not installed - log export skipped")
-                except Exception as e:
-                    logger.warning(f"⚠️  Failed to enable OTEL logging: {e}")
-            
-            # 3. Setup metrics export (if enabled)
-            metrics_exporter = os.getenv("OTEL_METRICS_EXPORTER", "").lower()
-            if metrics_exporter == "otlp":
-                try:
-                    from opentelemetry import metrics
-                    from opentelemetry.sdk.metrics import MeterProvider
-                    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-                    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-                    
-                    # Parse headers if provided
-                    headers = {}
-                    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-                        for item in os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(","):
-                            if "=" in item:
-                                k, v = item.split("=", 1)
-                                headers[k.strip()] = v.strip()
-                    
-                    metric_exporter = OTLPMetricExporter(
-                        endpoint=otel_endpoint,
-                        headers=headers if headers else None
-                    )
-                    metric_reader = PeriodicExportingMetricReader(metric_exporter)
-                    metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
-                    logger.info("✅ OTEL metrics export enabled")
-                except ImportError:
-                    logger.warning("⚠️  OTEL metrics packages not installed - metrics export skipped")
-                except Exception as e:
-                    logger.warning(f"⚠️  Failed to enable OTEL metrics: {e}")
-            
-            logger.info("✅ Custom OTEL endpoint configured")
-            logger.info(f"   Sending to: {otel_endpoint}")
-            logger.info(f"   Traces: {'✅' if os.getenv('OTEL_TRACES_EXPORTER', 'otlp').lower() == 'otlp' else '❌'}")
-            logger.info(f"   Logs: {'✅' if logs_exporter == 'otlp' else '❌'}")
-            logger.info(f"   Metrics: {'✅' if metrics_exporter == 'otlp' else '❌'}")
-        except ImportError:
-            logger.warning("⚠️  opentelemetry-instrumentation-langchain not found - custom OTEL skipped")
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to enable custom OTEL: {e}")
-    else:
-        logger.info("OTEL_EXPORTER_OTLP_ENDPOINT not set; telemetry disabled.")
+    if not otel_endpoint:
+        logger.warning("⚠️  OTEL_EXPORTER_OTLP_ENDPOINT not set; telemetry will be disabled.")
+        logger.warning("   Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OpenTelemetry instrumentation.")
+        return
+    
+    # Continue with instrumentation setup
+    try:
+        # 1. Setup LangChain/LangGraph instrumentation (traces)
+        from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+        LangchainInstrumentor().instrument()
+        logger.info("✅ OTEL LangChain instrumentation enabled")
+        
+        # 2. Setup Python logging to OTEL (if enabled)
+        logs_exporter = os.getenv("OTEL_LOGS_EXPORTER", "").lower()
+        if logs_exporter == "otlp":
+            try:
+                from opentelemetry.instrumentation.logging import LoggingInstrumentor
+                LoggingInstrumentor().instrument(set_logging_format=True)
+                logger.info("✅ OTEL logging export enabled")
+            except ImportError:
+                logger.warning("⚠️  opentelemetry-instrumentation-logging not installed - log export skipped")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to enable OTEL logging: {e}")
+        
+        # 3. Setup metrics export (if enabled)
+        metrics_exporter = os.getenv("OTEL_METRICS_EXPORTER", "").lower()
+        if metrics_exporter == "otlp":
+            try:
+                from opentelemetry import metrics
+                from opentelemetry.sdk.metrics import MeterProvider
+                from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+                from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+                
+                # Parse headers if provided
+                headers = {}
+                if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+                    for item in os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(","):
+                        if "=" in item:
+                            k, v = item.split("=", 1)
+                            headers[k.strip()] = v.strip()
+                
+                # Use HTTP exporter (port 4317 is HTTP, not gRPC)
+                metric_exporter = OTLPMetricExporter(
+                    endpoint=otel_endpoint,
+                    headers=headers if headers else None
+                )
+                metric_reader = PeriodicExportingMetricReader(metric_exporter)
+                metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
+                logger.info("✅ OTEL metrics export enabled (HTTP)")
+            except ImportError:
+                logger.warning("⚠️  OTEL metrics packages not installed - metrics export skipped")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to enable OTEL metrics: {e}")
+        
+        logger.info("✅ Custom OTEL endpoint configured")
+        logger.info(f"   Sending to: {otel_endpoint}")
+        logger.info(f"   Traces: {'✅' if os.getenv('OTEL_TRACES_EXPORTER', 'otlp').lower() == 'otlp' else '❌'}")
+        logger.info(f"   Logs: {'✅' if logs_exporter == 'otlp' else '❌'}")
+        logger.info(f"   Metrics: {'✅' if metrics_exporter == 'otlp' else '❌'}")
+    except ImportError:
+        logger.warning("⚠️  opentelemetry-instrumentation-langchain not found - custom OTEL skipped")
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to enable custom OTEL: {e}")
 
 
 def run(inputs: dict | None = None):
@@ -217,6 +221,18 @@ def main():
         server = app.build()
     else:
         server = app
+    
+    # 4.5. Instrument FastAPI for HTTP route tracing
+    otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if otel_endpoint:
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+            FastAPIInstrumentor().instrument_app(server)
+            logger.info("✅ FastAPI instrumentation enabled - HTTP routes will be traced")
+        except ImportError:
+            logger.warning("⚠️  opentelemetry-instrumentation-fastapi not installed - HTTP routes won't be traced")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to enable FastAPI instrumentation: {e}")
     
     port = int(os.getenv("PORT", "8080"))
     host = os.getenv("HOST", "0.0.0.0")
