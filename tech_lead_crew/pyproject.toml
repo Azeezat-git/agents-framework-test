@@ -14,7 +14,7 @@ dependencies = [
     "opentelemetry-instrumentation-crewai",  # CrewAI instrumentation
     "opentelemetry-instrumentation-logging",  # Python logging instrumentation
     "opentelemetry-instrumentation-fastapi",  # FastAPI instrumentation
-    "opentelemetry-exporter-otlp-proto-http",  # OTLP HTTP exporter (port 4317 is HTTP)
+    "opentelemetry-exporter-otlp-proto-grpc",  # OTLP gRPC exporter (port 4317 is gRPC)
     "opentelemetry-sdk>=1.20.0",  # OTEL SDK for resource configuration
 ]
 

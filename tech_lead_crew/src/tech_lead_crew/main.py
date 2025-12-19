@@ -50,7 +50,7 @@ def setup_otel_instrumentation():
             from opentelemetry.sdk.resources import Resource
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
             
             service_name = os.getenv("OTEL_SERVICE_NAME", "tech-lead-crew-agent")
             resource = Resource.create({
@@ -68,13 +68,14 @@ def setup_otel_instrumentation():
                         k, v = item.split("=", 1)
                         headers[k.strip()] = v.strip()
             
-            # Use HTTP exporter for traces (port 4317 is HTTP)
+            # Use gRPC exporter for traces (port 4317 is gRPC)
             # Only configure exporter if endpoint is set (otherwise rely on auto-config)
             if otel_endpoint:
-                # Ensure endpoint has http:// protocol
-                endpoint_url = otel_endpoint if otel_endpoint.startswith("http://") or otel_endpoint.startswith("https://") else f"http://{otel_endpoint}"
+                # gRPC exporter expects host:port format (no http://, no /v1/traces path)
+                # Remove http:// or https:// if present, and any path
+                endpoint_clean = otel_endpoint.replace("http://", "").replace("https://", "").split("/")[0]
                 trace_exporter = OTLPSpanExporter(
-                    endpoint=f"{endpoint_url}/v1/traces",
+                    endpoint=endpoint_clean,
                     headers=headers if headers else None
                 )
                 trace_provider = TracerProvider(resource=resource)
@@ -110,7 +111,7 @@ def setup_otel_instrumentation():
                     from opentelemetry import metrics
                     from opentelemetry.sdk.metrics import MeterProvider
                     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-                    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+                    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
                     
                     # Parse headers if provided
                     headers = {}
@@ -120,16 +121,16 @@ def setup_otel_instrumentation():
                                 k, v = item.split("=", 1)
                                 headers[k.strip()] = v.strip()
                     
-                    # Use HTTP exporter (port 4317 is HTTP, not gRPC)
-                    # Ensure endpoint has http:// protocol
-                    endpoint_url = otel_endpoint if otel_endpoint.startswith("http://") or otel_endpoint.startswith("https://") else f"http://{otel_endpoint}"
+                    # Use gRPC exporter (port 4317 is gRPC)
+                    # gRPC exporter expects host:port format (no http://, no path)
+                    endpoint_clean = otel_endpoint.replace("http://", "").replace("https://", "").split("/")[0]
                     metric_exporter = OTLPMetricExporter(
-                        endpoint=endpoint_url,
+                        endpoint=endpoint_clean,
                         headers=headers if headers else None
                     )
                     metric_reader = PeriodicExportingMetricReader(metric_exporter)
                     metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
-                    logger.info("✅ OTEL metrics export enabled (HTTP)")
+                    logger.info("✅ OTEL metrics export enabled (gRPC)")
                 except ImportError:
                     logger.warning("⚠️  OTEL metrics packages not installed - metrics export skipped")
                 except Exception as e:
