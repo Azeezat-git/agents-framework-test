@@ -61,8 +61,10 @@ def setup_otel_instrumentation():
                     headers[k.strip()] = v.strip()
         
         # Use HTTP exporter for traces (port 4317 is HTTP)
+        # Ensure endpoint has http:// protocol
+        endpoint_url = otel_endpoint if otel_endpoint.startswith("http://") or otel_endpoint.startswith("https://") else f"http://{otel_endpoint}"
         trace_exporter = OTLPSpanExporter(
-            endpoint=f"{otel_endpoint}/v1/traces",
+            endpoint=f"{endpoint_url}/v1/traces",
             headers=headers if headers else None
         )
         
@@ -106,8 +108,10 @@ def setup_otel_instrumentation():
                             headers[k.strip()] = v.strip()
                 
                 # Use HTTP exporter (port 4317 is HTTP, not gRPC)
+                # Ensure endpoint has http:// protocol
+                endpoint_url = otel_endpoint if otel_endpoint.startswith("http://") or otel_endpoint.startswith("https://") else f"http://{otel_endpoint}"
                 metric_exporter = OTLPMetricExporter(
-                    endpoint=otel_endpoint,
+                    endpoint=endpoint_url,
                     headers=headers if headers else None
                 )
                 metric_reader = PeriodicExportingMetricReader(metric_exporter)
